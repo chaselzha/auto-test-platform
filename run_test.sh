@@ -1,21 +1,45 @@
 #!/bin/bash
 
-# 任意一步失败，立即退出
 set -e
 
-# 获取环境参数
 ENV=${1:-test}
 
-echo "当前环境:$ENV"
+echo "======================"
+echo "当前环境: $ENV"
+echo "======================"
 
-# 创建Allure结果目录
-mkdir -p allure-results
 
-# 执行自动化测试
-python3 -m pytest \
+# 添加 pip 用户安装目录
+export PATH=$HOME/Library/Python/3.9/bin:$PATH
+
+
+echo "Python:"
+python3 --version
+
+
+echo "Pytest:"
+pytest --version
+
+
+echo "Allure:"
+allure --version
+
+
+echo "开始执行测试"
+
+
+pytest \
 automation/tests \
---env=$ENV \
---alluredir=allure-results
+--alluredir=automation/reports/allure-results
 
 
-echo "测试执行完成"
+echo "生成 Allure"
+
+
+allure generate \
+automation/reports/allure-results \
+-o automation/reports/allure-report \
+--clean
+
+
+echo "测试完成"

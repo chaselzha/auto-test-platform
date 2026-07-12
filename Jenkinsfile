@@ -4,7 +4,9 @@ pipeline {
 
 
     environment {
-        PYTHONUNBUFFERED = '1'
+
+        PATH = "/Users/chasel/Library/Python/3.9/bin:/opt/homebrew/bin:$PATH"
+
     }
 
 
@@ -21,6 +23,9 @@ pipeline {
 
                 echo "Java版本"
                 java -version
+
+                echo "PATH"
+                echo $PATH
                 '''
 
             }
@@ -34,7 +39,7 @@ pipeline {
             steps {
 
                 sh '''
-                python3 -m pip install --user -r requirements.txt
+                python3 -m pip install -r requirements.txt
                 '''
 
             }
@@ -63,15 +68,15 @@ pipeline {
 
             steps {
 
-                allure([
+                allure(
                     includeProperties: false,
                     jdk: '',
                     results: [
                         [
-                            path: 'allure-results'
+                            path: 'automation/reports/allure-results'
                         ]
                     ]
-                ])
+                )
 
             }
 
@@ -84,24 +89,9 @@ pipeline {
 
     post {
 
-
         always {
 
-            echo '自动化测试执行完成'
-
-        }
-
-
-        success {
-
-            echo '测试通过'
-
-        }
-
-
-        failure {
-
-            echo '测试失败，请查看日志'
+            echo "自动化测试执行完成"
 
         }
 
