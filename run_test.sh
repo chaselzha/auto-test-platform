@@ -1,31 +1,21 @@
 #!/bin/bash
 
+# 任意一步失败，立即退出
+set -e
 
-ENV=$1
-
-
-if [ -z "$ENV" ]
-then
-
-    ENV=test
-
-fi
-
+# 获取环境参数
+ENV=${1:-test}
 
 echo "当前环境:$ENV"
 
+# 创建Allure结果目录
+mkdir -p allure-results
 
-pytest \
---env=$ENV \
+# 执行自动化测试
+python3 -m pytest \
 automation/tests \
---alluredir=reports/allure-results
+--env=$ENV \
+--alluredir=allure-results
 
 
-
-allure generate \
-reports/allure-results \
--o reports/allure-report \
---clean
-
-
-echo "测试完成"
+echo "测试执行完成"

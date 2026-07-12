@@ -3,6 +3,11 @@ pipeline {
     agent any
 
 
+    environment {
+        PYTHONUNBUFFERED = '1'
+    }
+
+
     stages {
 
 
@@ -11,14 +16,15 @@ pipeline {
             steps {
 
                 sh '''
-                echo Python版本
+                echo "Python版本"
                 python3 --version
 
-                echo Java版本
+                echo "Java版本"
                 java -version
                 '''
 
             }
+
         }
 
 
@@ -28,7 +34,7 @@ pipeline {
             steps {
 
                 sh '''
-                pip3 install -r requirements.txt
+                python3 -m pip install --user -r requirements.txt
                 '''
 
             }
@@ -43,6 +49,7 @@ pipeline {
 
                 sh '''
                 chmod +x run_test.sh
+
                 ./run_test.sh test
                 '''
 
@@ -57,11 +64,11 @@ pipeline {
             steps {
 
                 allure([
-                    includeProperties:false,
-                    jdk:'',
-                    results:[
+                    includeProperties: false,
+                    jdk: '',
+                    results: [
                         [
-                            path:'automation/reports/allure-results'
+                            path: 'allure-results'
                         ]
                     ]
                 ])
@@ -74,14 +81,32 @@ pipeline {
     }
 
 
+
     post {
+
 
         always {
 
-            echo "自动化测试执行完成"
+            echo '自动化测试执行完成'
 
         }
 
+
+        success {
+
+            echo '测试通过'
+
+        }
+
+
+        failure {
+
+            echo '测试失败，请查看日志'
+
+        }
+
+
     }
+
 
 }
