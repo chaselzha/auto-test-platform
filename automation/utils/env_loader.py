@@ -1,6 +1,5 @@
-import os
 import yaml
-
+import os
 
 
 BASE_DIR = os.path.dirname(
@@ -8,23 +7,24 @@ BASE_DIR = os.path.dirname(
 )
 
 
+CONFIG_DIR = os.path.join(
+    BASE_DIR,
+    "config"
+)
 
-def load_env(env="test"):
 
 
-    file_path = os.path.join(
+def load_env_config(env):
 
-        BASE_DIR,
 
-        "config",
-
+    file = os.path.join(
+        CONFIG_DIR,
         f"config_{env}.yaml"
-
     )
 
 
     with open(
-        file_path,
+        file,
         encoding="utf-8"
     ) as f:
 
