@@ -1,0 +1,14 @@
+env:
+
+  name: test
+
+  url: https://www.baidu.com
+
+
+browser:
+
+  name: chrome
+
+  headless: false
+
+  implicit_wait: 10

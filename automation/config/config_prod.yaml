@@ -1,0 +1,14 @@
+env:
+
+  name: prod
+
+  url: https://www.baidu.com
+
+
+browser:
+
+  name: chrome
+
+  headless: true
+
+  implicit_wait: 10

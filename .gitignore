@@ -1,0 +1,27 @@
+# PyCharm
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual env
+.venv/
+venv/
+
+# Logs
+logs/
+automation/logs/
+
+# Screenshot
+screenshots/
+automation/screenshots/
+
+# Allure
+allure-results/
+allure-report/
+reports/
+
+# OS
+.DS_Store
