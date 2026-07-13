@@ -8,8 +8,8 @@ import allure
 from utils.driver_factory import get_driver
 from utils.config import load_config
 from utils.logger import logger
-from pages.baidu_page import BaiduPage
-
+#from pages.baidu_page import BaiduPage
+from pages.bing_page import BingPage
 # ===== 设置编码 =====
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 os.environ['LANG'] = 'zh_CN.UTF-8'

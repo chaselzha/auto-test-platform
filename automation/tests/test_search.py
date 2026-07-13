@@ -1,7 +1,8 @@
 # automation/tests/test_search.py
 import allure
 import pytest
-from pages.baidu_page import BaiduPage  # 👈 改为 BaiduPage
+#from pages.baidu_page import BaiduPage
+from pages.bing_page import BingPage
 from utils.config import get_config
 from utils.data_reader import load_yaml
 from utils.logger import logger
