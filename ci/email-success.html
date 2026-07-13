@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <title>Jenkins Build Notification</title>
+
+    <style>
+
+        *{
+            margin:0;
+            padding:0;
+            box-sizing:border-box;
+        }
+
+        body{
+
+            background:#f4f6f8;
+
+            font-family:
+                    "Segoe UI",
+                    Arial,
+                    Helvetica,
+                    sans-serif;
+
+            color:#333;
+
+            padding:30px;
+
+        }
+
+        .container{
+
+            width:900px;
+
+            margin:auto;
+
+            background:#ffffff;
+
+            border-radius:10px;
+
+            overflow:hidden;
+
+            box-shadow:0 5px 20px rgba(0,0,0,.15);
+
+        }
+
+        .header{
+
+            background:#28a745;
+
+            color:white;
+
+            padding:25px;
+
+        }
+
+        .header h1{
+
+            font-size:28px;
+
+            font-weight:600;
+
+        }
+
+        .header p{
+
+            margin-top:10px;
+
+            font-size:15px;
+
+            opacity:.9;
+
+        }
+
+        .success{
+
+            display:inline-block;
+
+            margin-top:15px;
+
+            padding:8px 18px;
+
+            background:white;
+
+            color:#28a745;
+
+            border-radius:20px;
+
+            font-weight:bold;
+
+            font-size:14px;
+
+        }
+
+        .content{
+
+            padding:30px;
+
+        }
+
+        h2{
+
+            margin-bottom:20px;
+
+            color:#333;
+
+        }
+
+        table{
+
+            width:100%;
+
+            border-collapse:collapse;
+
+        }
+
+        th{
+
+            width:220px;
+
+            text-align:left;
+
+            background:#f8f9fa;
+
+            padding:12px;
+
+            border:1px solid #ddd;
+
+        }
+
+        td{
+
+            padding:12px;
+
+            border:1px solid #ddd;
+
+        }
+
+        tr:nth-child(even){
+
+            background:#fafafa;
+
+        }
+
+        .footer{
+
+            background:#f8f9fa;
+
+            text-align:center;
+
+            padding:25px;
+
+            color:#666;
+
+            font-size:13px;
+
+        }
+
+        .button{
+
+            display:inline-block;
+
+            padding:12px 25px;
+
+            margin-right:15px;
+
+            margin-top:20px;
+
+            background:#28a745;
+
+            color:white;
+
+            text-decoration:none;
+
+            border-radius:5px;
+
+            font-weight:bold;
+
+        }
+
+        .button:hover{
+
+            background:#1f8a38;
+
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="header">
+
+        <h1>
+            Jenkins CI/CD Pipeline
+        </h1>
+
+        <p>
+            Automated Test Platform Notification
+        </p>
+
+        <div class="success">
+            BUILD SUCCESS
+        </div>
+
+    </div>
+
+    <div class="content">
+
+        <h2>
+            Build Information
+        </h2>
+
+        <table>            <tr>
+
+                <th>
+                    Project
+                </th>
+
+                <td>
+                    ${JOB_NAME}
+                </td>
+
+            </tr>
+
+            <tr>
+
+                <th>
+                    Build Number
+                </th>
+
+                <td>
+                    #${BUILD_NUMBER}
+                </td>
+
+            </tr>
+
+            <tr>
+
+                <th>
+                    Build Status
+                </th>
+
+                <td style="color:#28a745;font-weight:bold;">
+                    ${BUILD_STATUS}
+                </td>
+
+            </tr>
+
+            <tr>
+
+                <th>
+                    Environment
+                </th>
+
+                <td>
+                    ${ENV}
+                </td>
+
+            </tr>
+
+            <tr>
+
+                <th>
+                    Git Branch
+                </th>
+
+                <td>
+                    ${GIT_BRANCH}
+                </td>
+
+            </tr>
+
+            <tr>
+
+                <th>
+                    Commit ID
+                </th>
+
+                <td>
+                    ${GIT_COMMIT}
+                </td>
+
+            </tr>
+
+            <tr>
+
+                <th>
+                    Commit Message
+                </th>
+
+                <td>
+                    ${GIT_MESSAGE}
+                </td>
+
+            </tr>
+
+            <tr>
+
+                <th>
+                    Commit Author
+                </th>
+
+                <td>
+                    ${GIT_AUTHOR}
+                </td>
+
+            </tr>
+
+            <tr>
+
+                <th>
+                    Build Duration
+                </th>
+
+                <td>
+                    ${BUILD_DURATION}
+                </td>
+
+            </tr>
+
+            <tr>
+
+                <th>
+                    Build Time
+                </th>
+
+                <td>
+                    ${BUILD_START_TIME}
+                </td>
+
+            </tr>
+
+            <tr>
+
+                <th>
+                    Jenkins Build
+                </th>
+
+                <td>
+
+                    <a href="${BUILD_URL}">
+                        ${BUILD_URL}
+                    </a>
+
+                </td>
+
+            </tr>
+
+            <tr>
+
+                <th>
+                    Allure Report
+                </th>
+
+                <td>
+
+                    <a href="${ALLURE_URL}">
+                        ${ALLURE_URL}
+                    </a>
+
+                </td>
+
+            </tr>
+
+        </table>
+
+        <br>
+
+        <hr>
+
+        <br>
+
+        <h2>
+            Quick Actions
+        </h2>        <a
+            class="button"
+            href="${BUILD_URL}">
+            View Jenkins
+        </a>
+
+        <a
+            class="button"
+            href="${ALLURE_URL}">
+            View Allure Report
+        </a>
+
+        <a
+            class="button"
+            href="${BUILD_URL}console">
+            View Console Log
+        </a>
+
+    </div>
+
+    <div class="footer">
+
+        <p>
+
+            This email was automatically generated by the
+
+            <strong>Jenkins CI/CD Pipeline</strong>.
+
+        </p>
+
+        <br>
+
+        <p>
+
+            Project :
+            <strong>${JOB_NAME}</strong>
+
+            &nbsp;&nbsp;|&nbsp;&nbsp;
+
+            Build :
+            <strong>#${BUILD_NUMBER}</strong>
+
+        </p>
+
+        <br>
+
+        <p>
+
+            Powered by
+
+            Jenkins + Pytest + Selenium + Allure
+
+        </p>
+
+    </div>
+
+</div>
+
+</body>
+
+</html>
