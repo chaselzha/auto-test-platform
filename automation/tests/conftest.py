@@ -1,6 +1,8 @@
-# automation/conftest.py
+# automation/tests/conftest.py
 import sys
 import os
+import time
+from datetime import datetime
 import pytest
 import allure
 from utils.driver_factory import get_driver
@@ -8,14 +10,15 @@ from utils.config import load_config
 from utils.logger import logger
 from pages.baidu_page import BaiduPage
 
-# ===== 设置编码（支持中文） =====
-if sys.version_info[0] < 3:
-    reload(sys)
-    sys.setdefaultencoding('utf-8')
-
+# ===== 设置编码（Python 3 兼容） =====
+# Python 3 默认使用 UTF-8，不需要手动设置
+# 只需要设置环境变量即可
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 os.environ['LANG'] = 'zh_CN.UTF-8'
 os.environ['LC_ALL'] = 'zh_CN.UTF-8'
+
+# ===== 全局配置变量 =====
+config = None
 
 
 # ===== 命令行参数 =====
@@ -135,7 +138,11 @@ def pytest_runtest_makereport(item, call):
             screenshot_dir = "screenshots"
             if not os.path.exists(screenshot_dir):
                 os.makedirs(screenshot_dir)
-            screenshot_path = os.path.join(screenshot_dir, f"{item.name}_{int(os.time.time())}.png")
+
+            # 使用 datetime 生成时间戳
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            screenshot_path = os.path.join(screenshot_dir, f"{item.name}_{timestamp}.png")
+
             with open(screenshot_path, "wb") as f:
                 f.write(screenshot)
             logger.info(f"📸 截图已保存: {screenshot_path}")
