@@ -74,59 +74,58 @@ pipeline {
                 /************************************************
          * Checkout Source Code
          ************************************************/
-        stage('Checkout') {
+stage('Checkout') {
+    steps {
+        checkout scm
+        script {
+            env.BUILD_START_TIME = new Date().format(
+                    "yyyy-MM-dd HH:mm:ss",
+                    TimeZone.getTimeZone("Asia/Shanghai")
+            )
 
-            steps {
+            env.GIT_BRANCH_NAME = sh(
+                    script: "git rev-parse --abbrev-ref HEAD",
+                    returnStdout: true
+            ).trim()
 
-                checkout scm
+            env.GIT_COMMIT_ID = sh(
+                    script: "git rev-parse --short HEAD",
+                    returnStdout: true
+            ).trim()
 
-                script {
+            env.GIT_COMMIT_MSG = sh(
+                    script: "git log -1 --pretty=%s",
+                    returnStdout: true
+            ).trim()
 
-                    env.BUILD_START_TIME = new Date().format(
-                            "yyyy-MM-dd HH:mm:ss",
-                            TimeZone.getTimeZone("Asia/Shanghai")
-                    )
+            env.GIT_AUTHOR = sh(
+                    script: "git log -1 --pretty=%an",
+                    returnStdout: true
+            ).trim()
 
-                    env.GIT_BRANCH_NAME = sh(
-                            script: "git rev-parse --abbrev-ref HEAD",
-                            returnStdout: true
-                    ).trim()
+            // ===== 新增：为邮件通知准备的变量 =====
+            // 注意：BUILD_STATUS 和 BUILD_DURATION 在构建完成前无法获取最终值
+            // 可以在 post 阶段重新设置这些值
+            env.ALLURE_REPORT_URL = "${env.BUILD_URL}allure/"
 
-                    env.GIT_COMMIT_ID = sh(
-                            script: "git rev-parse --short HEAD",
-                            returnStdout: true
-                    ).trim()
+            // 设置默认值，post 阶段会更新
+            env.BUILD_STATUS = "RUNNING"
+            env.BUILD_DURATION = "Calculating..."
 
-                    env.GIT_COMMIT_MSG = sh(
-                            script: "git log -1 --pretty=%s",
-                            returnStdout: true
-                    ).trim()
-
-                    env.GIT_AUTHOR = sh(
-                            script: "git log -1 --pretty=%an",
-                            returnStdout: true
-                    ).trim()
-
-                    echo """
+            echo """
 ==============================
 Git Information
 
 Branch : ${env.GIT_BRANCH_NAME}
-
 Commit : ${env.GIT_COMMIT_ID}
-
 Author : ${env.GIT_AUTHOR}
-
 Message: ${env.GIT_COMMIT_MSG}
-
+Allure: ${env.ALLURE_REPORT_URL}
 ==============================
 """
-
-                }
-
-            }
-
         }
+    }
+}
 
         /************************************************
          * Environment Check
@@ -420,13 +419,17 @@ Message: ${env.GIT_COMMIT_MSG}
      * Post Actions
      ************************************************/
     post {
-
     success {
-
         script {
+            // 在 post 阶段重新设置这些变量
+            env.BUILD_STATUS = "SUCCESS"
+            env.BUILD_DURATION = currentBuild.durationString.replace(" and counting", "")
+            env.BUILD_TIMESTAMP = new Date().format(
+                    "yyyy-MM-dd HH:mm:ss",
+                    TimeZone.getTimeZone("Asia/Shanghai")
+            )
 
             def html = readFile("ci/email-success.html")
-
             html = html
                     .replace('${JOB_NAME}', env.JOB_NAME)
                     .replace('${BUILD_NUMBER}', env.BUILD_NUMBER)
@@ -439,6 +442,7 @@ Message: ${env.GIT_COMMIT_MSG}
                     .replace('${GIT_AUTHOR}', env.GIT_AUTHOR)
                     .replace('${BUILD_URL}', env.BUILD_URL)
                     .replace('${ALLURE_URL}', env.ALLURE_REPORT_URL)
+                    .replace('${BUILD_TIMESTAMP}', env.BUILD_TIMESTAMP)
 
             emailext(
                     to: params.EMAIL_TO,
@@ -446,17 +450,20 @@ Message: ${env.GIT_COMMIT_MSG}
                     subject: "✅ ${env.JOB_NAME} #${env.BUILD_NUMBER} Build Success",
                     body: html
             )
-
         }
-
     }
 
     failure {
-
         script {
+            // 在 post 阶段重新设置这些变量
+            env.BUILD_STATUS = "FAILURE"
+            env.BUILD_DURATION = currentBuild.durationString.replace(" and counting", "")
+            env.BUILD_TIMESTAMP = new Date().format(
+                    "yyyy-MM-dd HH:mm:ss",
+                    TimeZone.getTimeZone("Asia/Shanghai")
+            )
 
             def html = readFile("ci/email-failure.html")
-
             html = html
                     .replace('${JOB_NAME}', env.JOB_NAME)
                     .replace('${BUILD_NUMBER}', env.BUILD_NUMBER)
@@ -469,6 +476,7 @@ Message: ${env.GIT_COMMIT_MSG}
                     .replace('${GIT_AUTHOR}', env.GIT_AUTHOR)
                     .replace('${BUILD_URL}', env.BUILD_URL)
                     .replace('${ALLURE_URL}', env.ALLURE_REPORT_URL)
+                    .replace('${BUILD_TIMESTAMP}', env.BUILD_TIMESTAMP)
 
             emailext(
                     to: params.EMAIL_TO,
@@ -476,19 +484,13 @@ Message: ${env.GIT_COMMIT_MSG}
                     subject: "❌ ${env.JOB_NAME} #${env.BUILD_NUMBER} Build Failed",
                     body: html
             )
-
         }
-
     }
 
     always {
-
         echo "Build Finished."
-
         cleanWs()
-
     }
-
 }
 
 }
