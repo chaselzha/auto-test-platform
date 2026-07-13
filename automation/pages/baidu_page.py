@@ -42,7 +42,7 @@ class BaiduPage(BasePage):
 
         # 1. 尝试使用传统搜索框
         try:
-            search_input = self.find_element(self.search_input, timeout=5)
+            search_input = self.find_element(self.search_input)
             search_input.clear()
             search_input.send_keys(keyword)
             logger.debug(f"✅ 已输入关键词: {keyword}")
