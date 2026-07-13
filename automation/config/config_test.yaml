@@ -1,14 +1,26 @@
-env:
-
-  name: test
-
-  url: https://www.baidu.com
-
+# config/config_test.yaml
+base_url: "https://www.baidu.com"
 
 browser:
-
-  name: chrome
-
+  type: chrome
   headless: false
+  timeout: 10
+  window_size: "1920x1080"
 
-  implicit_wait: 10
+wait:
+  implicit: 10
+  explicit: 20
+  poll_frequency: 0.5
+
+screenshot:
+  on_failure: true
+  save_dir: "screenshots"
+
+log:
+  level: INFO
+  file: "logs/test.log"
+  rotation: "10MB"
+
+report:
+  dir: "reports/allure-results"
+  clean: true
