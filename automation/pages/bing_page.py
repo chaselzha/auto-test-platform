@@ -18,8 +18,8 @@ class BingPage(BasePage):
     search_input = (By.ID, "sb_form_q")
 
     # 搜索结果
-    search_results = (By.CSS_SELECTOR, "#b_results .b_algo")
-    result_links = (By.CSS_SELECTOR, "#b_results .b_algo h2 a")
+    search_results = (By.CSS_SELECTOR, "#b_results .b_algo, .b_results .b_algo, #b_results > li")
+    result_links = (By.CSS_SELECTOR, "#b_results .b_algo h2 a, .b_results .b_algo h2 a")
     result_stats = (By.CSS_SELECTOR, ".sb_count")
 
     def open(self):
