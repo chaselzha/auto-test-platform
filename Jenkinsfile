@@ -92,6 +92,10 @@ pipeline {
                         "yyyy-MM-dd HH:mm:ss",
                         TimeZone.getTimeZone("Asia/Shanghai")
                     )
+
+                    // 创建 .git-info 和 .build-info 目录
+                    sh 'mkdir -p .git-info .build-info'
+
                     def gitBranch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
                     def gitCommit = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                     def gitMsg = sh(script: "git log -1 --pretty=%s", returnStdout: true).trim()
@@ -202,9 +206,13 @@ pipeline {
                         returnStatus: true
                     )
 
-                    // 计算耗时
+                    // 计算耗时并保存到文件
                     def duration = (System.currentTimeMillis() - startTime) / 1000
-                    env.BUILD_DURATION = "${duration}s"
+                    def durationStr = "${duration}s"
+
+                    env.BUILD_DURATION = durationStr
+                    writeFile(file: '.build-info/duration', text: durationStr)
+
                     env.BUILD_STATUS = result == 0 ? "SUCCESS" : "FAILURE"
                     currentBuild.result = result == 0 ? "SUCCESS" : "FAILURE"
 
@@ -214,7 +222,7 @@ pipeline {
                     echo "========================================="
                     echo "Environment : ${params.ENV}"
                     echo "Browser     : ${params.BROWSER}"
-                    echo "Duration    : ${env.BUILD_DURATION}"
+                    echo "Duration    : ${durationStr}"
                     echo "Exit Code   : ${result}"
                     echo "Status      : ${env.BUILD_STATUS}"
                     echo "========================================="
@@ -265,9 +273,12 @@ pipeline {
                         }]
                     }
 
-                    // 计算总耗时
+                    // 计算总耗时并保存到文件
                     def totalDuration = (System.currentTimeMillis() - startTime) / 1000
-                    env.BUILD_DURATION = "${totalDuration}s"
+                    def durationStr = "${totalDuration}s"
+
+                    env.BUILD_DURATION = durationStr
+                    writeFile(file: '.build-info/duration', text: durationStr)
 
                     def failed = results.values().findAll { it != 0 }
                     env.BUILD_STATUS = failed.isEmpty() ? "SUCCESS" : "FAILURE"
@@ -280,7 +291,7 @@ pipeline {
                     results.each { key, value ->
                         echo "${key}: ${value == 0 ? '✅ PASSED' : '❌ FAILED'}"
                     }
-                    echo "Total Duration: ${env.BUILD_DURATION}"
+                    echo "Total Duration: ${durationStr}"
                     echo "========================================="
                 }
             }
@@ -332,6 +343,7 @@ pipeline {
     post {
         success {
             script {
+                // 从文件读取 Git 信息
                 def gitBranch = "unknown"
                 def gitCommit = "unknown"
                 def gitMessage = "unknown"
@@ -346,8 +358,16 @@ pipeline {
                     echo "⚠️ Could not read Git info"
                 }
 
-                // 添加空值检查
-                def buildDuration = env.BUILD_DURATION ?: "N/A"
+                // 从文件读取构建耗时
+                def buildDuration = "N/A"
+                try {
+                    buildDuration = readFile('.build-info/duration').trim()
+                } catch (Exception e) {
+                    echo "⚠️ Could not read build duration from file"
+                    // 降级：尝试从环境变量读取
+                    buildDuration = env.BUILD_DURATION ?: "N/A"
+                }
+
                 def buildStatus = "SUCCESS"
                 def browser = params.BROWSER ?: "chrome"
                 def buildTimestamp = new Date().format("yyyy-MM-dd HH:mm:ss", TimeZone.getTimeZone("Asia/Shanghai"))
@@ -388,6 +408,7 @@ pipeline {
 
         failure {
             script {
+                // 从文件读取 Git 信息
                 def gitBranch = "unknown"
                 def gitCommit = "unknown"
                 def gitMessage = "unknown"
@@ -402,8 +423,15 @@ pipeline {
                     echo "⚠️ Could not read Git info"
                 }
 
-                // 添加空值检查
-                def buildDuration = env.BUILD_DURATION ?: "N/A"
+                // 从文件读取构建耗时
+                def buildDuration = "N/A"
+                try {
+                    buildDuration = readFile('.build-info/duration').trim()
+                } catch (Exception e) {
+                    echo "⚠️ Could not read build duration from file"
+                    buildDuration = env.BUILD_DURATION ?: "N/A"
+                }
+
                 def buildStatus = "FAILURE"
                 def browser = params.BROWSER ?: "chrome"
                 def buildTimestamp = new Date().format("yyyy-MM-dd HH:mm:ss", TimeZone.getTimeZone("Asia/Shanghai"))
