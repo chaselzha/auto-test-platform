@@ -1,65 +1,65 @@
 pipeline {
-
     agent any
+
+    /************************************************
+     * Pipeline Triggers
+     ************************************************/
+    triggers {
+        // 每晚 2 点自动执行
+        cron('0 2 * * *')
+        // 每周一早上 8 点执行完整测试
+        // cron('0 8 * * 1')
+    }
 
     /************************************************
      * Pipeline Options
      ************************************************/
     options {
-
-        buildDiscarder(logRotator(
-                numToKeepStr: '10',
-                artifactNumToKeepStr: '5'
-        ))
-
+        buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '5'))
         disableConcurrentBuilds()
-
         timestamps()
-
         ansiColor('xterm')
-
     }
 
     /************************************************
      * Build Parameters
      ************************************************/
     parameters {
-
         choice(
-                name: 'ENV',
-                choices: [
-                        'test',
-                        'dev',
-                        'prod'
-                ],
-                description: '请选择测试环境'
+            name: 'ENV',
+            choices: ['test', 'dev', 'prod'],
+            description: '请选择测试环境'
         )
-
+        choice(
+            name: 'BROWSER',
+            choices: ['chrome', 'firefox', 'edge', 'all'],
+            description: '请选择浏览器'
+        )
         string(
-                name: 'EMAIL_TO',
-                defaultValue: 'cherryccc0327@gmail.com',
-                description: '邮件接收人（多个邮箱使用英文逗号分隔）'
+            name: 'EMAIL_TO',
+            defaultValue: 'cherryccc0327@gmail.com',
+            description: '邮件接收人'
         )
-
+        booleanParam(
+            name: 'PARALLEL',
+            defaultValue: true,
+            description: '是否并行执行'
+        )
     }
 
     /************************************************
      * Global Environment
      ************************************************/
     environment {
-
         ALLURE_HOME = tool 'allure'
-
-        // Git 信息环境变量
         GIT_BRANCH_NAME = ''
         GIT_COMMIT_ID = ''
         GIT_COMMIT_MSG = ''
         GIT_AUTHOR = ''
-
         BUILD_STATUS = ''
         BUILD_DURATION = ''
         BUILD_START_TIME = ''
-
+        HEADLESS = 'true'
     }
 
     /************************************************
@@ -71,115 +71,61 @@ pipeline {
          * Checkout Source Code
          ************************************************/
         stage('Checkout') {
-    steps {
-        cleanWs()
+            steps {
+                cleanWs()
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/main']],
+                    userRemoteConfigs: [[
+                        url: 'git@github.com:chaselzha/auto-test-platform.git',
+                        credentialsId: 'github-ssh-key'
+                    ]],
+                    extensions: [
+                        [$class: 'CleanCheckout'],
+                        [$class: 'CloneOption', depth: 0, noTags: false, shallow: false, timeout: 10],
+                        [$class: 'PruneStaleBranch'],
+                        [$class: 'LocalBranch', localBranch: 'main']
+                    ]
+                ])
+                script {
+                    env.BUILD_START_TIME = new Date().format(
+                        "yyyy-MM-dd HH:mm:ss",
+                        TimeZone.getTimeZone("Asia/Shanghai")
+                    )
+                    def gitBranch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+                    def gitCommit = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    def gitMsg = sh(script: "git log -1 --pretty=%s", returnStdout: true).trim()
+                    def gitAuthor = sh(script: "git log -1 --pretty=%an", returnStdout: true).trim()
 
-        checkout([
-            $class: 'GitSCM',
-            branches: [[name: '*/main']],
-            userRemoteConfigs: [[
-                url: 'git@github.com:chaselzha/auto-test-platform.git',
-                credentialsId: 'github-ssh-key'
-            ]],
-            extensions: [
-                [$class: 'CleanCheckout'],
-                [$class: 'CloneOption',
-                    depth: 0,
-                    noTags: false,
-                    reference: '',
-                    shallow: false,
-                    timeout: 10
-                ],
-                [$class: 'PruneStaleBranch'],
-                [$class: 'LocalBranch', localBranch: 'main']
-            ]
-        ])
+                    env.GIT_BRANCH_NAME = gitBranch
+                    env.GIT_COMMIT_ID = gitCommit
+                    env.GIT_COMMIT_MSG = gitMsg
+                    env.GIT_AUTHOR = gitAuthor
 
-        script {
-            env.BUILD_START_TIME = new Date().format(
-                    "yyyy-MM-dd HH:mm:ss",
-                    TimeZone.getTimeZone("Asia/Shanghai")
-            )
+                    writeFile(file: '.git-info/branch', text: gitBranch)
+                    writeFile(file: '.git-info/commit', text: gitCommit)
+                    writeFile(file: '.git-info/message', text: gitMsg)
+                    writeFile(file: '.git-info/author', text: gitAuthor)
 
-            // ===== 获取 Git 信息 =====
-            def gitBranch = sh(
-                    script: "git rev-parse --abbrev-ref HEAD",
-                    returnStdout: true
-            ).trim()
+                    env.ALLURE_REPORT_URL = "${env.BUILD_URL}allure/"
+                    env.BUILD_STATUS = "RUNNING"
+                    env.BUILD_DURATION = "Calculating..."
 
-            def gitCommit = sh(
-                    script: "git rev-parse --short HEAD",
-                    returnStdout: true
-            ).trim()
-
-            def gitMsg = sh(
-                    script: "git log -1 --pretty=%s",
-                    returnStdout: true
-            ).trim()
-
-            def gitAuthor = sh(
-                    script: "git log -1 --pretty=%an",
-                    returnStdout: true
-            ).trim()
-
-            // 设置环境变量
-            env.GIT_BRANCH_NAME = gitBranch
-            env.GIT_COMMIT_ID = gitCommit
-            env.GIT_COMMIT_MSG = gitMsg
-            env.GIT_AUTHOR = gitAuthor
-
-            // ===== 保存 Git 信息到文件（使用 writeFile 避免 shell 转义问题） =====
-            writeFile(file: '.git-info/branch', text: gitBranch)
-            writeFile(file: '.git-info/commit', text: gitCommit)
-            writeFile(file: '.git-info/message', text: gitMsg)
-            writeFile(file: '.git-info/author', text: gitAuthor)
-            echo "Git info saved to .git-info/"
-
-            // ===== 为邮件通知准备的变量 =====
-            env.ALLURE_REPORT_URL = "${env.BUILD_URL}allure/"
-            env.BUILD_STATUS = "RUNNING"
-            env.BUILD_DURATION = "Calculating..."
-
-            // ===== 验证 ci 目录和文件 =====
-            sh '''
-                echo "========================================="
-                echo "Checking ci directory contents"
-                echo "========================================="
-                pwd
-                echo ""
-                echo "Listing all files in workspace:"
-                ls -la
-                echo ""
-                if [ -d "ci" ]; then
-                    echo "✅ ci directory exists"
-                    ls -la ci/
-                    echo ""
-                    if [ -f "ci/email-success.html" ] && [ -f "ci/email-failure.html" ]; then
-                        echo "✅ Both email templates found!"
-                        echo "✅ email-success.html exists"
-                        echo "✅ email-failure.html exists"
-                    else
-                        echo "⚠️ Some template files are missing"
-                    fi
-                else
-                    echo "❌ ci directory NOT found!"
-                fi
-            '''
-
-            echo """
-==============================
-Git Information (from Checkout)
-
-Branch : ${env.GIT_BRANCH_NAME}
-Commit : ${env.GIT_COMMIT_ID}
-Author : ${env.GIT_AUTHOR}
-Message: ${env.GIT_COMMIT_MSG}
-Allure: ${env.ALLURE_REPORT_URL}
-==============================
-"""
+                    sh '''
+                        echo "========================================="
+                        echo "Git Information"
+                        echo "========================================="
+                        echo "Branch: ${GIT_BRANCH_NAME}"
+                        echo "Commit: ${GIT_COMMIT_ID}"
+                        echo "Author: ${GIT_AUTHOR}"
+                        echo "Message: ${GIT_COMMIT_MSG}"
+                        echo "========================================="
+                        echo "Checking ci directory..."
+                        ls -la ci/ 2>/dev/null || echo "ci/ not found"
+                    '''
+                }
+            }
         }
-    }
-}
 
         /************************************************
          * Environment Check
@@ -191,74 +137,14 @@ Allure: ${env.ALLURE_REPORT_URL}
                     echo "      Jenkins Environment Check"
                     echo "========================================="
                     echo ""
-                    echo "Current User:"
-                    whoami
+                    echo "Python: $(python3 --version)"
+                    echo "Java: $(java -version 2>&1 | head -1)"
+                    echo "Git: $(git --version)"
                     echo ""
-                    echo "Host Name:"
-                    hostname
-                    echo ""
-                    echo "Current Directory:"
-                    pwd
-                    echo ""
-                    echo "Operating System:"
-                    uname -a
-                    echo ""
-                    echo "Workspace:"
-                    echo $WORKSPACE
-                    echo ""
-                    echo "Build Number:"
-                    echo $BUILD_NUMBER
-                    echo ""
-                    echo "Build URL:"
-                    echo $BUILD_URL
-                    echo ""
+                    echo "Browser: ${BROWSER}"
+                    echo "Environment: ${ENV}"
+                    echo "Parallel: ${PARALLEL}"
                     echo "========================================="
-                    echo "Python Information"
-                    echo "========================================="
-                    python3 --version
-                    which python3
-                    pip3 --version
-                    which pip3
-                    echo ""
-                    echo "========================================="
-                    echo "Java Information"
-                    echo "========================================="
-                    java -version
-                    which java
-                    echo ""
-                    echo "========================================="
-                    echo "Git Information"
-                    echo "========================================="
-                    git --version
-                    which git
-                    echo ""
-                    echo "========================================="
-                    echo "Browser Information"
-                    echo "========================================="
-                    if command -v "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" >/dev/null 2>&1
-                    then
-                        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version
-                    else
-                        echo "Google Chrome Not Found"
-                    fi
-                    echo ""
-                    echo "========================================="
-                    echo "ChromeDriver Information"
-                    echo "========================================="
-                    if command -v chromedriver >/dev/null 2>&1
-                    then
-                        chromedriver --version
-                    else
-                        echo "ChromeDriver Not Found"
-                    fi
-                    echo ""
-                    echo "========================================="
-                    echo "Environment Parameter"
-                    echo "========================================="
-                    echo "ENV=${ENV}"
-                    echo "EMAIL_TO=${EMAIL_TO}"
-                    echo ""
-                    echo "Environment Check Finished."
                 '''
             }
         }
@@ -275,71 +161,124 @@ Allure: ${env.ALLURE_REPORT_URL}
                     def start = System.currentTimeMillis()
                     sh '''
                         set -e
-                        echo ""
-                        echo "Python Version"
-                        python3 --version
-                        echo ""
-                        echo "Pip Version"
-                        pip3 --version
-                        echo ""
-                        echo "Upgrade Pip"
                         python3 -m pip install --upgrade pip
-                        echo ""
-                        echo "Install Requirements"
                         python3 -m pip install --disable-pip-version-check --no-cache-dir -r requirements.txt
-                        echo ""
-                        echo "Installed Packages"
-                        python3 -m pip list
                     '''
                     def seconds = (System.currentTimeMillis() - start) / 1000
-                    echo ""
-                    echo "Dependency installation finished."
-                    echo "Elapsed Time : ${seconds} s"
-                    echo ""
+                    echo "Dependency installation finished. Elapsed Time : ${seconds} s"
                 }
             }
         }
 
         /************************************************
-         * Execute Automation Test
+         * Execute Test - 单浏览器
          ************************************************/
         stage('Execute Test') {
+            when {
+                expression { params.BROWSER != 'all' }
+            }
             steps {
                 script {
                     echo "========================================="
                     echo "Execute Automation Test"
                     echo "========================================="
+                    echo "Browser: ${params.BROWSER}"
+                    echo "Environment: ${params.ENV}"
+
                     def startTime = System.currentTimeMillis()
+                    def parallelFlag = params.PARALLEL ? "-n 4" : ""
+
                     int result = sh(
-                            script: """
-                                chmod +x run_test.sh
-                                ./run_test.sh ${params.ENV}
-                            """,
-                            returnStatus: true
+                        script: """
+                            export BROWSER=${params.BROWSER}
+                            export HEADLESS=true
+                            cd automation
+                            pytest tests/ \
+                                --env=${params.ENV} \
+                                --alluredir=reports/allure-results \
+                                ${parallelFlag} \
+                                -m "smoke or regression"
+                        """,
+                        returnStatus: true
                     )
-                    def duration = (System.currentTimeMillis() - startTime) / 1000
-                    env.BUILD_DURATION = "${duration}s"
+
+                    env.BUILD_DURATION = "${(System.currentTimeMillis() - startTime) / 1000}s"
+                    env.BUILD_STATUS = result == 0 ? "SUCCESS" : "FAILURE"
+                    currentBuild.result = result == 0 ? "SUCCESS" : "FAILURE"
+
                     echo ""
                     echo "========================================="
                     echo "Test Summary"
                     echo "========================================="
                     echo "Environment : ${params.ENV}"
+                    echo "Browser     : ${params.BROWSER}"
                     echo "Duration    : ${env.BUILD_DURATION}"
                     echo "Exit Code   : ${result}"
+                    echo "Status      : ${env.BUILD_STATUS}"
                     echo "========================================="
-                    if (result == 0) {
-                        env.BUILD_STATUS = "SUCCESS"
-                        currentBuild.result = "SUCCESS"
-                        echo ""
-                        echo "Automation Test Passed."
-                        echo ""
-                    } else {
-                        env.BUILD_STATUS = "FAILURE"
-                        currentBuild.result = "FAILURE"
-                        echo ""
-                        echo "Automation Test Failed."
-                        echo ""
+                }
+            }
+        }
+
+        /************************************************
+         * Execute Test - 多浏览器矩阵
+         ************************************************/
+        stage('Execute Test - Multi Browser') {
+            when {
+                expression { params.BROWSER == 'all' }
+            }
+            steps {
+                script {
+                    echo "========================================="
+                    echo "Execute Multi-Browser Test"
+                    echo "========================================="
+
+                    def browsers = ['chrome', 'firefox', 'edge']
+                    def results = [:]
+                    def startTime = System.currentTimeMillis()
+
+                    parallel browsers.collectEntries { browser ->
+                        ["${browser}".toString(), {
+                            echo "🚀 启动 ${browser} 测试..."
+                            def browserStart = System.currentTimeMillis()
+                            def parallelFlag = params.PARALLEL ? "-n 2" : ""
+
+                            int result = sh(
+                                script: """
+                                    export BROWSER=${browser}
+                                    export HEADLESS=true
+                                    cd automation
+                                    pytest tests/ \
+                                        --env=${params.ENV} \
+                                        --alluredir=reports/allure-results-${browser} \
+                                        ${parallelFlag} \
+                                        -m "smoke or regression"
+                                """,
+                                returnStatus: true
+                            )
+
+                            results[browser] = result
+                            def duration = (System.currentTimeMillis() - browserStart) / 1000
+                            echo "${browser} 测试完成，耗时: ${duration}s，结果: ${result == 0 ? '✅ PASSED' : '❌ FAILED'}"
+                        }]
                     }
+
+                    env.BUILD_DURATION = "${(System.currentTimeMillis() - startTime) / 1000}s"
+
+                    // 汇总结果
+                    def failed = results.values().findAll { it != 0 }
+                    env.BUILD_STATUS = failed.isEmpty() ? "SUCCESS" : "FAILURE"
+                    currentBuild.result = failed.isEmpty() ? "SUCCESS" : "FAILURE"
+
+                    echo ""
+                    echo "========================================="
+                    echo "Multi-Browser Test Summary"
+                    echo "========================================="
+                    results.each { key, value ->
+                        echo "${key}: ${value == 0 ? '✅ PASSED' : '❌ FAILED'}"
+                    }
+                    echo "Total Duration: ${env.BUILD_DURATION}"
+                    echo "========================================="
                 }
             }
         }
@@ -353,28 +292,31 @@ Allure: ${env.ALLURE_REPORT_URL}
                     echo "========================================="
                     echo "Generate Allure Report"
                     echo "========================================="
-                    if (fileExists('automation/reports/allure-results')) {
-                        echo "Allure results found."
-                        allure(
-                                includeProperties: false,
-                                jdk: '',
-                                results: [[path: 'automation/reports/allure-results']]
-                        )
-                        echo ""
-                        echo "========================================="
-                        echo "Allure Report Generated Successfully"
-                        echo "========================================="
-                        env.ALLURE_REPORT_URL = "${env.BUILD_URL}allure"
+
+                    def resultDirs = []
+                    if (params.BROWSER == 'all') {
+                        resultDirs = ['chrome', 'firefox', 'edge'].collect { "automation/reports/allure-results-${it}" }
                     } else {
-                        echo ""
-                        echo "========================================="
-                        echo "WARNING"
-                        echo "========================================="
-                        echo "No allure-results directory found."
-                        echo "Skip Allure Report."
-                        echo ""
-                        env.ALLURE_REPORT_URL = "N/A"
+                        resultDirs = ['automation/reports/allure-results']
                     }
+
+                    resultDirs.each { dir ->
+                        if (fileExists(dir)) {
+                            echo "✅ Allure results found: ${dir}"
+                        } else {
+                            echo "⚠️ Allure results not found: ${dir}"
+                        }
+                    }
+
+                    allure(
+                        includeProperties: false,
+                        jdk: '',
+                        results: resultDirs.collect { [path: it] }
+                    )
+
+                    env.ALLURE_REPORT_URL = "${env.BUILD_URL}allure"
+                    echo "✅ Allure Report Generated Successfully"
+                    echo "📊 Allure Report URL: ${env.ALLURE_REPORT_URL}"
                 }
             }
         }
@@ -385,291 +327,106 @@ Allure: ${env.ALLURE_REPORT_URL}
      * Post Actions
      ************************************************/
     post {
-
         success {
-
             script {
-
-                // ===== 从文件读取 Git 信息 =====
                 def gitBranch = "unknown"
                 def gitCommit = "unknown"
                 def gitMessage = "unknown"
                 def gitAuthor = "unknown"
 
                 try {
-                    gitBranch = readFile(".git-info/branch").trim()
-                    gitCommit = readFile(".git-info/commit").trim()
-                    gitMessage = readFile(".git-info/message").trim()
-                    gitAuthor = readFile(".git-info/author").trim()
-                    echo "✅ Loaded Git info from .git-info/ files"
-                    echo "   Branch: ${gitBranch}"
-                    echo "   Commit: ${gitCommit}"
+                    gitBranch = readFile('.git-info/branch').trim()
+                    gitCommit = readFile('.git-info/commit').trim()
+                    gitMessage = readFile('.git-info/message').trim()
+                    gitAuthor = readFile('.git-info/author').trim()
                 } catch (Exception e) {
-                    echo "⚠️ Could not read from .git-info/ files"
-                    gitBranch = env.GIT_BRANCH_NAME ?: "unknown"
-                    gitCommit = env.GIT_COMMIT_ID ?: "unknown"
-                    gitMessage = env.GIT_COMMIT_MSG ?: "unknown"
-                    gitAuthor = env.GIT_AUTHOR ?: "unknown"
-                    echo "⚠️ Using environment variables for Git info"
+                    echo "⚠️ Could not read Git info"
                 }
 
-                echo """
-=========================================
-Git Info for Email (Success)
-=========================================
-Branch : ${gitBranch}
-Commit : ${gitCommit}
-Author : ${gitAuthor}
-Message: ${gitMessage}
-=========================================
-"""
+                def buildTimestamp = new Date().format("yyyy-MM-dd HH:mm:ss", TimeZone.getTimeZone("Asia/Shanghai"))
 
-                def buildStatus = "SUCCESS"
-                def buildDuration = currentBuild.durationString.replace(" and counting", "")
-                def buildTimestamp = new Date().format(
-                        "yyyy-MM-dd HH:mm:ss",
-                        TimeZone.getTimeZone("Asia/Shanghai")
-                )
-
-                def jobName = env.JOB_NAME
-                def buildNumber = env.BUILD_NUMBER
-                def testEnv = params.ENV
-                def buildUrl = env.BUILD_URL
-                def allureUrl = env.ALLURE_REPORT_URL ?: "N/A"
-                def buildStartTime = env.BUILD_START_TIME ?: buildTimestamp
-
-                def html
-                try {
-                    if (fileExists("ci/email-success.html")) {
-                        html = readFile("ci/email-success.html")
-                        echo "✅ Loaded email template from ci/email-success.html"
-                    } else {
-                        throw new Exception("File not found")
-                    }
-
-                    html = html
-                            .replace('${JOB_NAME}', jobName)
-                            .replace('${BUILD_NUMBER}', buildNumber)
-                            .replace('${ENV}', testEnv)
-                            .replace('${BUILD_STATUS}', buildStatus)
-                            .replace('${BUILD_DURATION}', buildDuration)
-                            .replace('${GIT_BRANCH}', gitBranch)
-                            .replace('${GIT_COMMIT}', gitCommit)
-                            .replace('${GIT_MESSAGE}', gitMessage)
-                            .replace('${GIT_AUTHOR}', gitAuthor)
-                            .replace('${BUILD_URL}', buildUrl)
-                            .replace('${ALLURE_URL}', allureUrl)
-                            .replace('${BUILD_TIMESTAMP}', buildTimestamp)
-                            .replace('${BUILD_START_TIME}', buildStartTime)   // 👈 新增
-                } catch (Exception e) {
-                    echo "⚠️ ci/email-success.html not found, using inline template"
-                    html = """
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="UTF-8">
-                        <style>
-                            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                            .header { background: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px; }
-                            .content { padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px; }
-                            .detail { margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #4CAF50; }
-                            .label { font-weight: bold; color: #555; }
-                            .footer { margin-top: 20px; text-align: center; color: #666; font-size: 12px; }
-                            a { color: #4CAF50; text-decoration: none; }
-                            a:hover { text-decoration: underline; }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="container">
-                            <div class="header"><h2>✅ 自动化测试构建成功</h2></div>
-                            <div class="content">
-                                <h3>📋 构建信息</h3>
-                                <div class="detail"><span class="label">项目名称：</span> ${jobName}</div>
-                                <div class="detail"><span class="label">构建编号：</span> #${buildNumber}</div>
-                                <div class="detail"><span class="label">测试环境：</span> ${testEnv}</div>
-                                <div class="detail"><span class="label">构建状态：</span> ✅ ${buildStatus}</div>
-                                <div class="detail"><span class="label">构建耗时：</span> ${buildDuration}</div>
-                                <div class="detail"><span class="label">构建时间：</span> ${buildTimestamp}</div>
-                                <h3>📝 Git 信息</h3>
-                                <div class="detail"><span class="label">分支：</span> ${gitBranch}</div>
-                                <div class="detail"><span class="label">提交 ID：</span> ${gitCommit}</div>
-                                <div class="detail"><span class="label">提交信息：</span> ${gitMessage}</div>
-                                <div class="detail"><span class="label">提交作者：</span> ${gitAuthor}</div>
-                                <h3>🔗 报告链接</h3>
-                                <div class="detail"><span class="label">Allure 测试报告：</span> <a href="${allureUrl}">${allureUrl}</a></div>
-                                <div class="detail"><span class="label">Jenkins 构建：</span> <a href="${buildUrl}">${buildUrl}</a></div>
-                            </div>
-                            <div class="footer"><p>此邮件由 Jenkins 自动发送，请勿回复。</p></div>
-                        </div>
-                    </body>
-                    </html>
-                    """
-                }
+                def html = readFile("ci/email-success.html")
+                html = html
+                    .replace('${JOB_NAME}', env.JOB_NAME)
+                    .replace('${BUILD_NUMBER}', env.BUILD_NUMBER)
+                    .replace('${ENV}', params.ENV)
+                    .replace('${BUILD_STATUS}', "SUCCESS")
+                    .replace('${BUILD_DURATION}', env.BUILD_DURATION)
+                    .replace('${GIT_BRANCH}', gitBranch)
+                    .replace('${GIT_COMMIT}', gitCommit)
+                    .replace('${GIT_MESSAGE}', gitMessage)
+                    .replace('${GIT_AUTHOR}', gitAuthor)
+                    .replace('${BUILD_URL}', env.BUILD_URL)
+                    .replace('${ALLURE_URL}', env.ALLURE_REPORT_URL)
+                    .replace('${BUILD_TIMESTAMP}', buildTimestamp)
+                    .replace('${BROWSER}', params.BROWSER)
 
                 emailext(
-                        to: params.EMAIL_TO,
-                        mimeType: 'text/html',
-                        subject: "✅ ${jobName} #${buildNumber} Build Success",
-                        body: html
+                    to: params.EMAIL_TO,
+                    mimeType: 'text/html',
+                    subject: "✅ ${env.JOB_NAME} #${env.BUILD_NUMBER} Build Success",
+                    body: html
                 )
 
                 echo "📧 Success email sent to ${params.EMAIL_TO}"
-                echo "   Git Branch: ${gitBranch}"
-                echo "   Git Commit: ${gitCommit}"
-
-                // ===== 邮件发送完成后清理工作空间 =====
                 cleanWs()
-
             }
-
         }
 
         failure {
-
             script {
-
-                // ===== 从文件读取 Git 信息 =====
                 def gitBranch = "unknown"
                 def gitCommit = "unknown"
                 def gitMessage = "unknown"
                 def gitAuthor = "unknown"
 
                 try {
-                    gitBranch = readFile(".git-info/branch").trim()
-                    gitCommit = readFile(".git-info/commit").trim()
-                    gitMessage = readFile(".git-info/message").trim()
-                    gitAuthor = readFile(".git-info/author").trim()
-                    echo "✅ Loaded Git info from .git-info/ files"
+                    gitBranch = readFile('.git-info/branch').trim()
+                    gitCommit = readFile('.git-info/commit').trim()
+                    gitMessage = readFile('.git-info/message').trim()
+                    gitAuthor = readFile('.git-info/author').trim()
                 } catch (Exception e) {
-                    echo "⚠️ Could not read from .git-info/ files"
-                    gitBranch = env.GIT_BRANCH_NAME ?: "unknown"
-                    gitCommit = env.GIT_COMMIT_ID ?: "unknown"
-                    gitMessage = env.GIT_COMMIT_MSG ?: "unknown"
-                    gitAuthor = env.GIT_AUTHOR ?: "unknown"
+                    echo "⚠️ Could not read Git info"
                 }
 
-                echo """
-=========================================
-Git Info for Email (Failure)
-=========================================
-Branch : ${gitBranch}
-Commit : ${gitCommit}
-Author : ${gitAuthor}
-Message: ${gitMessage}
-=========================================
-"""
+                def buildTimestamp = new Date().format("yyyy-MM-dd HH:mm:ss", TimeZone.getTimeZone("Asia/Shanghai"))
 
-                def buildStatus = "FAILURE"
-                def buildDuration = currentBuild.durationString.replace(" and counting", "")
-                def buildTimestamp = new Date().format(
-                        "yyyy-MM-dd HH:mm:ss",
-                        TimeZone.getTimeZone("Asia/Shanghai")
-                )
-
-                def jobName = env.JOB_NAME
-                def buildNumber = env.BUILD_NUMBER
-                def testEnv = params.ENV
-                def buildUrl = env.BUILD_URL
-                def allureUrl = env.ALLURE_REPORT_URL ?: "N/A"
-                def buildStartTime = env.BUILD_START_TIME ?: buildTimestamp
-
-                def html
-                try {
-                    if (fileExists("ci/email-failure.html")) {
-                        html = readFile("ci/email-failure.html")
-                        echo "✅ Loaded email template from ci/email-failure.html"
-                    } else {
-                        throw new Exception("File not found")
-                    }
-
-                    html = html
-                            .replace('${JOB_NAME}', jobName)
-                            .replace('${BUILD_NUMBER}', buildNumber)
-                            .replace('${ENV}', testEnv)
-                            .replace('${BUILD_STATUS}', buildStatus)
-                            .replace('${BUILD_DURATION}', buildDuration)
-                            .replace('${GIT_BRANCH}', gitBranch)
-                            .replace('${GIT_COMMIT}', gitCommit)
-                            .replace('${GIT_MESSAGE}', gitMessage)
-                            .replace('${GIT_AUTHOR}', gitAuthor)
-                            .replace('${BUILD_URL}', buildUrl)
-                            .replace('${ALLURE_URL}', allureUrl)
-                            .replace('${BUILD_TIMESTAMP}', buildTimestamp)
-                            .replace('${BUILD_START_TIME}', buildStartTime)   // 👈 新增
-                } catch (Exception e) {
-                    echo "⚠️ ci/email-failure.html not found, using inline template"
-                    html = """
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="UTF-8">
-                        <style>
-                            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                            .header { background: #f44336; color: white; padding: 20px; text-align: center; border-radius: 5px; }
-                            .content { padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px; }
-                            .detail { margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #f44336; }
-                            .error-box { background: #fff3f3; border: 1px solid #f44336; padding: 15px; border-radius: 5px; margin: 15px 0; }
-                            .label { font-weight: bold; color: #555; }
-                            .footer { margin-top: 20px; text-align: center; color: #666; font-size: 12px; }
-                            a { color: #f44336; text-decoration: none; }
-                            a:hover { text-decoration: underline; }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="container">
-                            <div class="header"><h2>❌ 自动化测试构建失败</h2></div>
-                            <div class="content">
-                                <div class="error-box"><strong>⚠️ 构建失败，请及时检查！</strong></div>
-                                <h3>📋 构建信息</h3>
-                                <div class="detail"><span class="label">项目名称：</span> ${jobName}</div>
-                                <div class="detail"><span class="label">构建编号：</span> #${buildNumber}</div>
-                                <div class="detail"><span class="label">测试环境：</span> ${testEnv}</div>
-                                <div class="detail"><span class="label">构建状态：</span> ❌ ${buildStatus}</div>
-                                <div class="detail"><span class="label">构建耗时：</span> ${buildDuration}</div>
-                                <div class="detail"><span class="label">构建时间：</span> ${buildTimestamp}</div>
-                                <h3>📝 Git 信息</h3>
-                                <div class="detail"><span class="label">分支：</span> ${gitBranch}</div>
-                                <div class="detail"><span class="label">提交 ID：</span> ${gitCommit}</div>
-                                <div class="detail"><span class="label">提交信息：</span> ${gitMessage}</div>
-                                <div class="detail"><span class="label">提交作者：</span> ${gitAuthor}</div>
-                                <h3>🔗 报告链接</h3>
-                                <div class="detail"><span class="label">Allure 测试报告：</span> <a href="${allureUrl}">${allureUrl}</a></div>
-                                <div class="detail"><span class="label">Jenkins 构建：</span> <a href="${buildUrl}">${buildUrl}</a></div>
-                            </div>
-                            <div class="footer"><p>此邮件由 Jenkins 自动发送，请勿回复。</p></div>
-                        </div>
-                    </body>
-                    </html>
-                    """
-                }
+                def html = readFile("ci/email-failure.html")
+                html = html
+                    .replace('${JOB_NAME}', env.JOB_NAME)
+                    .replace('${BUILD_NUMBER}', env.BUILD_NUMBER)
+                    .replace('${ENV}', params.ENV)
+                    .replace('${BUILD_STATUS}', "FAILURE")
+                    .replace('${BUILD_DURATION}', env.BUILD_DURATION)
+                    .replace('${GIT_BRANCH}', gitBranch)
+                    .replace('${GIT_COMMIT}', gitCommit)
+                    .replace('${GIT_MESSAGE}', gitMessage)
+                    .replace('${GIT_AUTHOR}', gitAuthor)
+                    .replace('${BUILD_URL}', env.BUILD_URL)
+                    .replace('${ALLURE_URL}', env.ALLURE_REPORT_URL)
+                    .replace('${BUILD_TIMESTAMP}', buildTimestamp)
+                    .replace('${BROWSER}', params.BROWSER)
 
                 emailext(
-                        to: params.EMAIL_TO,
-                        mimeType: 'text/html',
-                        subject: "❌ ${jobName} #${buildNumber} Build Failed",
-                        body: html
+                    to: params.EMAIL_TO,
+                    mimeType: 'text/html',
+                    subject: "❌ ${env.JOB_NAME} #${env.BUILD_NUMBER} Build Failed",
+                    body: html
                 )
 
                 echo "📧 Failure email sent to ${params.EMAIL_TO}"
-                echo "   Git Branch: ${gitBranch}"
-                echo "   Git Commit: ${gitCommit}"
-
-                // ===== 邮件发送完成后清理工作空间 =====
                 cleanWs()
-
             }
-
         }
 
-        // ===== always 块（可选，用于最终的清理） =====
         always {
+            echo ""
             echo "========================================="
             echo "Pipeline execution completed."
+            echo "Build: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+            echo "Status: ${env.BUILD_STATUS}"
+            echo "Duration: ${env.BUILD_DURATION}"
             echo "========================================="
         }
-
     }
-
 }

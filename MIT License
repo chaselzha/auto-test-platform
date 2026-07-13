@@ -1,0 +1,158 @@
+
+---
+
+## 3. `automation/utils/notification.py`
+
+```python
+# automation/utils/notification.py
+import requests
+import json
+from utils.logger import logger
+
+
+class DingTalkNotifier:
+    """钉钉通知"""
+
+    def __init__(self, webhook_url):
+        self.webhook_url = webhook_url
+
+    def send_text(self, message, at_mobiles=None, at_all=False):
+        """发送文本消息"""
+        headers = {'Content-Type': 'application/json'}
+        data = {
+            "msgtype": "text",
+            "text": {"content": message},
+            "at": {
+                "atMobiles": at_mobiles or [],
+                "isAtAll": at_all
+            }
+        }
+        return self._send(data)
+
+    def send_markdown(self, title, text, at_mobiles=None, at_all=False):
+        """发送 Markdown 消息"""
+        headers = {'Content-Type': 'application/json'}
+        data = {
+            "msgtype": "markdown",
+            "markdown": {
+                "title": title,
+                "text": text
+            },
+            "at": {
+                "atMobiles": at_mobiles or [],
+                "isAtAll": at_all
+            }
+        }
+        return self._send(data)
+
+    def _send(self, data):
+        """发送请求"""
+        try:
+            response = requests.post(
+                self.webhook_url,
+                headers={'Content-Type': 'application/json'},
+                data=json.dumps(data),
+                timeout=10
+            )
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('errcode') == 0:
+                    logger.info("✅ 钉钉通知发送成功")
+                    return True
+                else:
+                    logger.error(f"❌ 钉钉通知发送失败: {result}")
+                    return False
+            else:
+                logger.error(f"❌ 钉钉通知发送失败: HTTP {response.status_code}")
+                return False
+        except Exception as e:
+            logger.error(f"❌ 钉钉通知异常: {e}")
+            return False
+
+
+class WeChatNotifier:
+    """企业微信通知"""
+
+    def __init__(self, webhook_url):
+        self.webhook_url = webhook_url
+
+    def send_text(self, message, mentioned_list=None, mentioned_mobile_list=None):
+        """发送文本消息"""
+        headers = {'Content-Type': 'application/json'}
+        data = {
+            "msgtype": "text",
+            "text": {
+                "content": message,
+                "mentioned_list": mentioned_list or [],
+                "mentioned_mobile_list": mentioned_mobile_list or []
+            }
+        }
+        return self._send(data)
+
+    def send_markdown(self, content):
+        """发送 Markdown 消息"""
+        headers = {'Content-Type': 'application/json'}
+        data = {
+            "msgtype": "markdown",
+            "markdown": {
+                "content": content
+            }
+        }
+        return self._send(data)
+
+    def _send(self, data):
+        """发送请求"""
+        try:
+            response = requests.post(
+                self.webhook_url,
+                headers={'Content-Type': 'application/json'},
+                data=json.dumps(data),
+                timeout=10
+            )
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('errcode') == 0:
+                    logger.info("✅ 企业微信通知发送成功")
+                    return True
+                else:
+                    logger.error(f"❌ 企业微信通知发送失败: {result}")
+                    return False
+            else:
+                logger.error(f"❌ 企业微信通知发送失败: HTTP {response.status_code}")
+                return False
+        except Exception as e:
+            logger.error(f"❌ 企业微信通知异常: {e}")
+            return False
+
+
+def send_build_notification(status, job_name, build_number, build_url, allure_url):
+    """
+    发送构建通知
+    """
+    emoji = "✅" if status == "SUCCESS" else "❌"
+    status_text = "成功" if status == "SUCCESS" else "失败"
+
+    message = f"""
+    {emoji} Jenkins 构建 {status_text}
+
+    📦 项目: {job_name}
+    🔢 构建: #{build_number}
+    📊 报告: {allure_url}
+    🔗 详情: {build_url}
+    """
+
+    # 发送钉钉通知
+    try:
+        from utils.config import get_config
+        config = get_config()
+        webhook = config.get("notification.dingtalk.webhook")
+        if webhook:
+            notifier = DingTalkNotifier(webhook)
+            notifier.send_markdown(
+                title=f"Jenkins 构建 {status_text}",
+                text=message
+            )
+    except Exception as e:
+        logger.warning(f"钉钉通知发送失败: {e}")
+
+    return message

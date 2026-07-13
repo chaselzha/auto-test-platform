@@ -1,27 +1,47 @@
 #!/bin/bash
+# run_test.sh
 
-ENV=$1
+# 设置编码
+export PYTHONIOENCODING=utf-8
+export LANG=zh_CN.UTF-8
+export LC_ALL=zh_CN.UTF-8
 
-if [ -z "$ENV" ]; then
-    ENV=test
-fi
+# 获取参数
+ENV=${1:-test}
+BROWSER=${2:-chrome}
+PARALLEL=${3:-4}
+MARKERS=${4:-smoke}
 
 echo "=============================="
-echo "当前运行环境：$ENV"
+echo "自动化测试执行器"
+echo "=============================="
+echo "环境      : ${ENV}"
+echo "浏览器    : ${BROWSER}"
+echo "并行数    : ${PARALLEL}"
+echo "测试标记  : ${MARKERS}"
 echo "=============================="
 
-# pytest 所在目录
-export PATH=$HOME/Library/Python/3.9/bin:$PATH
+# 设置环境变量
+export BROWSER=${BROWSER}
+export HEADLESS=true
+export TEST_ENV=${ENV}
 
-mkdir -p automation/reports/allure-results
-mkdir -p automation/logs
-mkdir -p automation/screenshots
+# 执行测试
+cd automation
 
-pytest automation/tests \
-    --env=$ENV \
-    -vs \
-    --alluredir=automation/reports/allure-results
+python3 -m pytest tests/ \
+    --env=${ENV} \
+    --alluredir=reports/allure-results \
+    -n ${PARALLEL} \
+    -v \
+    --tb=short \
+    -m "${MARKERS}"
+
+EXIT_CODE=$?
 
 echo "=============================="
 echo "测试完成"
+echo "退出码: ${EXIT_CODE}"
 echo "=============================="
+
+exit ${EXIT_CODE}
