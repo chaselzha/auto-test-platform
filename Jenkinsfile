@@ -418,208 +418,230 @@ Allure: ${env.ALLURE_REPORT_URL}
      ************************************************/
     post {
 
-        success {
+    success {
 
-            script {
+        script {
 
-                // 在 post 阶段重新设置这些变量
-                env.BUILD_STATUS = "SUCCESS"
-                env.BUILD_DURATION = currentBuild.durationString.replace(" and counting", "")
-                env.BUILD_TIMESTAMP = new Date().format(
-                        "yyyy-MM-dd HH:mm:ss",
-                        TimeZone.getTimeZone("Asia/Shanghai")
-                )
+            // 在 post 阶段设置这些变量
+            def buildStatus = "SUCCESS"
+            def buildDuration = currentBuild.durationString.replace(" and counting", "")
+            def buildTimestamp = new Date().format(
+                    "yyyy-MM-dd HH:mm:ss",
+                    TimeZone.getTimeZone("Asia/Shanghai")
+            )
 
-                // 尝试读取文件，如果不存在则使用内联 HTML
-                def html
-                try {
-                    html = readFile("ci/email-success.html")
-                    echo "✅ Loaded email template from ci/email-success.html"
-                } catch (Exception e) {
-                    echo "⚠️ ci/email-success.html not found, using inline template"
-                    html = """
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="UTF-8">
-                        <style>
-                            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                            .header { background: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px; }
-                            .content { padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px; }
-                            .detail { margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #4CAF50; }
-                            .label { font-weight: bold; color: #555; }
-                            .footer { margin-top: 20px; text-align: center; color: #666; font-size: 12px; }
-                            a { color: #4CAF50; text-decoration: none; }
-                            a:hover { text-decoration: underline; }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="container">
-                            <div class="header">
-                                <h2>✅ 自动化测试构建成功</h2>
-                            </div>
-                            <div class="content">
-                                <h3>📋 构建信息</h3>
-                                <div class="detail"><span class="label">项目名称：</span> ${JOB_NAME}</div>
-                                <div class="detail"><span class="label">构建编号：</span> #${BUILD_NUMBER}</div>
-                                <div class="detail"><span class="label">测试环境：</span> ${ENV}</div>
-                                <div class="detail"><span class="label">构建状态：</span> ✅ ${BUILD_STATUS}</div>
-                                <div class="detail"><span class="label">构建耗时：</span> ${BUILD_DURATION}</div>
-                                <div class="detail"><span class="label">构建时间：</span> ${BUILD_TIMESTAMP}</div>
-                                <h3>📝 Git 信息</h3>
-                                <div class="detail"><span class="label">分支：</span> ${GIT_BRANCH}</div>
-                                <div class="detail"><span class="label">提交 ID：</span> ${GIT_COMMIT}</div>
-                                <div class="detail"><span class="label">提交信息：</span> ${GIT_MESSAGE}</div>
-                                <div class="detail"><span class="label">提交作者：</span> ${GIT_AUTHOR}</div>
-                                <h3>🔗 报告链接</h3>
-                                <div class="detail"><span class="label">Allure 测试报告：</span> <a href="${ALLURE_URL}">${ALLURE_URL}</a></div>
-                                <div class="detail"><span class="label">Jenkins 构建：</span> <a href="${BUILD_URL}">${BUILD_URL}</a></div>
-                            </div>
-                            <div class="footer">
-                                <p>此邮件由 Jenkins 自动发送，请勿回复。</p>
-                            </div>
-                        </div>
-                    </body>
-                    </html>
-                    """
-                }
+            def jobName = env.JOB_NAME
+            def buildNumber = env.BUILD_NUMBER
+            def testEnv = params.ENV
+            def gitBranch = env.GIT_BRANCH_NAME
+            def gitCommit = env.GIT_COMMIT_ID
+            def gitMessage = env.GIT_COMMIT_MSG
+            def gitAuthor = env.GIT_AUTHOR
+            def buildUrl = env.BUILD_URL
+            def allureUrl = env.ALLURE_REPORT_URL
 
+            // 尝试读取文件，如果不存在则使用内联 HTML
+            def html
+            try {
+                html = readFile("ci/email-success.html")
+                echo "✅ Loaded email template from ci/email-success.html"
+                // 替换文件中的占位符
                 html = html
-                        .replace('${JOB_NAME}', env.JOB_NAME)
-                        .replace('${BUILD_NUMBER}', env.BUILD_NUMBER)
-                        .replace('${ENV}', params.ENV)
-                        .replace('${BUILD_STATUS}', env.BUILD_STATUS)
-                        .replace('${BUILD_DURATION}', env.BUILD_DURATION)
-                        .replace('${GIT_BRANCH}', env.GIT_BRANCH_NAME)
-                        .replace('${GIT_COMMIT}', env.GIT_COMMIT_ID)
-                        .replace('${GIT_MESSAGE}', env.GIT_COMMIT_MSG)
-                        .replace('${GIT_AUTHOR}', env.GIT_AUTHOR)
-                        .replace('${BUILD_URL}', env.BUILD_URL)
-                        .replace('${ALLURE_URL}', env.ALLURE_REPORT_URL)
-                        .replace('${BUILD_TIMESTAMP}', env.BUILD_TIMESTAMP)
-
-                emailext(
-                        to: params.EMAIL_TO,
-                        mimeType: 'text/html',
-                        subject: "✅ ${env.JOB_NAME} #${env.BUILD_NUMBER} Build Success",
-                        body: html
-                )
-
-                echo "📧 Success email sent to ${params.EMAIL_TO}"
-
+                        .replace('${JOB_NAME}', jobName)
+                        .replace('${BUILD_NUMBER}', buildNumber)
+                        .replace('${ENV}', testEnv)
+                        .replace('${BUILD_STATUS}', buildStatus)
+                        .replace('${BUILD_DURATION}', buildDuration)
+                        .replace('${GIT_BRANCH}', gitBranch)
+                        .replace('${GIT_COMMIT}', gitCommit)
+                        .replace('${GIT_MESSAGE}', gitMessage)
+                        .replace('${GIT_AUTHOR}', gitAuthor)
+                        .replace('${BUILD_URL}', buildUrl)
+                        .replace('${ALLURE_URL}', allureUrl)
+                        .replace('${BUILD_TIMESTAMP}', buildTimestamp)
+            } catch (Exception e) {
+                echo "⚠️ ci/email-success.html not found, using inline template"
+                // 使用内联 HTML（使用字符串插值）
+                html = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <style>
+                        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                        .header { background: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px; }
+                        .content { padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px; }
+                        .detail { margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #4CAF50; }
+                        .label { font-weight: bold; color: #555; }
+                        .footer { margin-top: 20px; text-align: center; color: #666; font-size: 12px; }
+                        a { color: #4CAF50; text-decoration: none; }
+                        a:hover { text-decoration: underline; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h2>✅ 自动化测试构建成功</h2>
+                        </div>
+                        <div class="content">
+                            <h3>📋 构建信息</h3>
+                            <div class="detail"><span class="label">项目名称：</span> ${jobName}</div>
+                            <div class="detail"><span class="label">构建编号：</span> #${buildNumber}</div>
+                            <div class="detail"><span class="label">测试环境：</span> ${testEnv}</div>
+                            <div class="detail"><span class="label">构建状态：</span> ✅ ${buildStatus}</div>
+                            <div class="detail"><span class="label">构建耗时：</span> ${buildDuration}</div>
+                            <div class="detail"><span class="label">构建时间：</span> ${buildTimestamp}</div>
+                            <h3>📝 Git 信息</h3>
+                            <div class="detail"><span class="label">分支：</span> ${gitBranch}</div>
+                            <div class="detail"><span class="label">提交 ID：</span> ${gitCommit}</div>
+                            <div class="detail"><span class="label">提交信息：</span> ${gitMessage}</div>
+                            <div class="detail"><span class="label">提交作者：</span> ${gitAuthor}</div>
+                            <h3>🔗 报告链接</h3>
+                            <div class="detail"><span class="label">Allure 测试报告：</span> <a href="${allureUrl}">${allureUrl}</a></div>
+                            <div class="detail"><span class="label">Jenkins 构建：</span> <a href="${buildUrl}">${buildUrl}</a></div>
+                        </div>
+                        <div class="footer">
+                            <p>此邮件由 Jenkins 自动发送，请勿回复。</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """
             }
 
-        }
+            emailext(
+                    to: params.EMAIL_TO,
+                    mimeType: 'text/html',
+                    subject: "✅ ${jobName} #${buildNumber} Build Success",
+                    body: html
+            )
 
-        failure {
-
-            script {
-
-                // 在 post 阶段重新设置这些变量
-                env.BUILD_STATUS = "FAILURE"
-                env.BUILD_DURATION = currentBuild.durationString.replace(" and counting", "")
-                env.BUILD_TIMESTAMP = new Date().format(
-                        "yyyy-MM-dd HH:mm:ss",
-                        TimeZone.getTimeZone("Asia/Shanghai")
-                )
-
-                // 尝试读取文件，如果不存在则使用内联 HTML
-                def html
-                try {
-                    html = readFile("ci/email-failure.html")
-                    echo "✅ Loaded email template from ci/email-failure.html"
-                } catch (Exception e) {
-                    echo "⚠️ ci/email-failure.html not found, using inline template"
-                    html = """
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="UTF-8">
-                        <style>
-                            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                            .header { background: #f44336; color: white; padding: 20px; text-align: center; border-radius: 5px; }
-                            .content { padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px; }
-                            .detail { margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #f44336; }
-                            .error-box { background: #fff3f3; border: 1px solid #f44336; padding: 15px; border-radius: 5px; margin: 15px 0; }
-                            .label { font-weight: bold; color: #555; }
-                            .footer { margin-top: 20px; text-align: center; color: #666; font-size: 12px; }
-                            a { color: #f44336; text-decoration: none; }
-                            a:hover { text-decoration: underline; }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="container">
-                            <div class="header">
-                                <h2>❌ 自动化测试构建失败</h2>
-                            </div>
-                            <div class="content">
-                                <div class="error-box">
-                                    <strong>⚠️ 构建失败，请及时检查！</strong>
-                                </div>
-                                <h3>📋 构建信息</h3>
-                                <div class="detail"><span class="label">项目名称：</span> ${JOB_NAME}</div>
-                                <div class="detail"><span class="label">构建编号：</span> #${BUILD_NUMBER}</div>
-                                <div class="detail"><span class="label">测试环境：</span> ${ENV}</div>
-                                <div class="detail"><span class="label">构建状态：</span> ❌ ${BUILD_STATUS}</div>
-                                <div class="detail"><span class="label">构建耗时：</span> ${BUILD_DURATION}</div>
-                                <div class="detail"><span class="label">构建时间：</span> ${BUILD_TIMESTAMP}</div>
-                                <h3>📝 Git 信息</h3>
-                                <div class="detail"><span class="label">分支：</span> ${GIT_BRANCH}</div>
-                                <div class="detail"><span class="label">提交 ID：</span> ${GIT_COMMIT}</div>
-                                <div class="detail"><span class="label">提交信息：</span> ${GIT_MESSAGE}</div>
-                                <div class="detail"><span class="label">提交作者：</span> ${GIT_AUTHOR}</div>
-                                <h3>🔗 报告链接</h3>
-                                <div class="detail"><span class="label">Allure 测试报告：</span> <a href="${ALLURE_URL}">${ALLURE_URL}</a></div>
-                                <div class="detail"><span class="label">Jenkins 构建：</span> <a href="${BUILD_URL}">${BUILD_URL}</a></div>
-                            </div>
-                            <div class="footer">
-                                <p>此邮件由 Jenkins 自动发送，请勿回复。</p>
-                            </div>
-                        </div>
-                    </body>
-                    </html>
-                    """
-                }
-
-                html = html
-                        .replace('${JOB_NAME}', env.JOB_NAME)
-                        .replace('${BUILD_NUMBER}', env.BUILD_NUMBER)
-                        .replace('${ENV}', params.ENV)
-                        .replace('${BUILD_STATUS}', env.BUILD_STATUS)
-                        .replace('${BUILD_DURATION}', env.BUILD_DURATION)
-                        .replace('${GIT_BRANCH}', env.GIT_BRANCH_NAME)
-                        .replace('${GIT_COMMIT}', env.GIT_COMMIT_ID)
-                        .replace('${GIT_MESSAGE}', env.GIT_COMMIT_MSG)
-                        .replace('${GIT_AUTHOR}', env.GIT_AUTHOR)
-                        .replace('${BUILD_URL}', env.BUILD_URL)
-                        .replace('${ALLURE_URL}', env.ALLURE_REPORT_URL)
-                        .replace('${BUILD_TIMESTAMP}', env.BUILD_TIMESTAMP)
-
-                emailext(
-                        to: params.EMAIL_TO,
-                        mimeType: 'text/html',
-                        subject: "❌ ${env.JOB_NAME} #${env.BUILD_NUMBER} Build Failed",
-                        body: html
-                )
-
-                echo "📧 Failure email sent to ${params.EMAIL_TO}"
-
-            }
-
-        }
-
-        always {
-
-            echo "========================================="
-            echo "Build Finished."
-            echo "========================================="
-
-            cleanWs()
+            echo "📧 Success email sent to ${params.EMAIL_TO}"
 
         }
 
     }
+
+    failure {
+
+        script {
+
+            // 在 post 阶段设置这些变量
+            def buildStatus = "FAILURE"
+            def buildDuration = currentBuild.durationString.replace(" and counting", "")
+            def buildTimestamp = new Date().format(
+                    "yyyy-MM-dd HH:mm:ss",
+                    TimeZone.getTimeZone("Asia/Shanghai")
+            )
+
+            def jobName = env.JOB_NAME
+            def buildNumber = env.BUILD_NUMBER
+            def testEnv = params.ENV
+            def gitBranch = env.GIT_BRANCH_NAME
+            def gitCommit = env.GIT_COMMIT_ID
+            def gitMessage = env.GIT_COMMIT_MSG
+            def gitAuthor = env.GIT_AUTHOR
+            def buildUrl = env.BUILD_URL
+            def allureUrl = env.ALLURE_REPORT_URL
+
+            // 尝试读取文件，如果不存在则使用内联 HTML
+            def html
+            try {
+                html = readFile("ci/email-failure.html")
+                echo "✅ Loaded email template from ci/email-failure.html"
+                // 替换文件中的占位符
+                html = html
+                        .replace('${JOB_NAME}', jobName)
+                        .replace('${BUILD_NUMBER}', buildNumber)
+                        .replace('${ENV}', testEnv)
+                        .replace('${BUILD_STATUS}', buildStatus)
+                        .replace('${BUILD_DURATION}', buildDuration)
+                        .replace('${GIT_BRANCH}', gitBranch)
+                        .replace('${GIT_COMMIT}', gitCommit)
+                        .replace('${GIT_MESSAGE}', gitMessage)
+                        .replace('${GIT_AUTHOR}', gitAuthor)
+                        .replace('${BUILD_URL}', buildUrl)
+                        .replace('${ALLURE_URL}', allureUrl)
+                        .replace('${BUILD_TIMESTAMP}', buildTimestamp)
+            } catch (Exception e) {
+                echo "⚠️ ci/email-failure.html not found, using inline template"
+                // 使用内联 HTML（使用字符串插值）
+                html = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <style>
+                        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                        .header { background: #f44336; color: white; padding: 20px; text-align: center; border-radius: 5px; }
+                        .content { padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px; }
+                        .detail { margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #f44336; }
+                        .error-box { background: #fff3f3; border: 1px solid #f44336; padding: 15px; border-radius: 5px; margin: 15px 0; }
+                        .label { font-weight: bold; color: #555; }
+                        .footer { margin-top: 20px; text-align: center; color: #666; font-size: 12px; }
+                        a { color: #f44336; text-decoration: none; }
+                        a:hover { text-decoration: underline; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h2>❌ 自动化测试构建失败</h2>
+                        </div>
+                        <div class="content">
+                            <div class="error-box">
+                                <strong>⚠️ 构建失败，请及时检查！</strong>
+                            </div>
+                            <h3>📋 构建信息</h3>
+                            <div class="detail"><span class="label">项目名称：</span> ${jobName}</div>
+                            <div class="detail"><span class="label">构建编号：</span> #${buildNumber}</div>
+                            <div class="detail"><span class="label">测试环境：</span> ${testEnv}</div>
+                            <div class="detail"><span class="label">构建状态：</span> ❌ ${buildStatus}</div>
+                            <div class="detail"><span class="label">构建耗时：</span> ${buildDuration}</div>
+                            <div class="detail"><span class="label">构建时间：</span> ${buildTimestamp}</div>
+                            <h3>📝 Git 信息</h3>
+                            <div class="detail"><span class="label">分支：</span> ${gitBranch}</div>
+                            <div class="detail"><span class="label">提交 ID：</span> ${gitCommit}</div>
+                            <div class="detail"><span class="label">提交信息：</span> ${gitMessage}</div>
+                            <div class="detail"><span class="label">提交作者：</span> ${gitAuthor}</div>
+                            <h3>🔗 报告链接</h3>
+                            <div class="detail"><span class="label">Allure 测试报告：</span> <a href="${allureUrl}">${allureUrl}</a></div>
+                            <div class="detail"><span class="label">Jenkins 构建：</span> <a href="${buildUrl}">${buildUrl}</a></div>
+                        </div>
+                        <div class="footer">
+                            <p>此邮件由 Jenkins 自动发送，请勿回复。</p>
+                        </div>
+                    </div>
+                </body>
+                </html>
+                """
+            }
+
+            emailext(
+                    to: params.EMAIL_TO,
+                    mimeType: 'text/html',
+                    subject: "❌ ${jobName} #${buildNumber} Build Failed",
+                    body: html
+            )
+
+            echo "📧 Failure email sent to ${params.EMAIL_TO}"
+
+        }
+
+    }
+
+    always {
+
+        echo "========================================="
+        echo "Build Finished."
+        echo "========================================="
+
+        cleanWs()
+
+    }
+
+}
 
 }
