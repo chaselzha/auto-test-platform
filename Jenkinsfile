@@ -188,7 +188,6 @@ pipeline {
                     def startTime = System.currentTimeMillis()
                     def parallelFlag = params.PARALLEL ? "-n 4" : ""
 
-                    // 使用 python3 -m pytest 而不是直接调用 pytest
                     int result = sh(
                         script: """
                             export BROWSER=${params.BROWSER}
@@ -203,7 +202,9 @@ pipeline {
                         returnStatus: true
                     )
 
-                    env.BUILD_DURATION = "${(System.currentTimeMillis() - startTime) / 1000}s"
+                    // 计算耗时
+                    def duration = (System.currentTimeMillis() - startTime) / 1000
+                    env.BUILD_DURATION = "${duration}s"
                     env.BUILD_STATUS = result == 0 ? "SUCCESS" : "FAILURE"
                     currentBuild.result = result == 0 ? "SUCCESS" : "FAILURE"
 
@@ -244,7 +245,6 @@ pipeline {
                             def browserStart = System.currentTimeMillis()
                             def parallelFlag = params.PARALLEL ? "-n 2" : ""
 
-                            // 使用 python3 -m pytest 而不是直接调用 pytest
                             int result = sh(
                                 script: """
                                     export BROWSER=${browser}
@@ -265,9 +265,10 @@ pipeline {
                         }]
                     }
 
-                    env.BUILD_DURATION = "${(System.currentTimeMillis() - startTime) / 1000}s"
+                    // 计算总耗时
+                    def totalDuration = (System.currentTimeMillis() - startTime) / 1000
+                    env.BUILD_DURATION = "${totalDuration}s"
 
-                    // 汇总结果
                     def failed = results.values().findAll { it != 0 }
                     env.BUILD_STATUS = failed.isEmpty() ? "SUCCESS" : "FAILURE"
                     currentBuild.result = failed.isEmpty() ? "SUCCESS" : "FAILURE"
@@ -345,7 +346,7 @@ pipeline {
                     echo "⚠️ Could not read Git info"
                 }
 
-                // 添加空值检查，防止 NullPointerException
+                // 添加空值检查
                 def buildDuration = env.BUILD_DURATION ?: "N/A"
                 def buildStatus = "SUCCESS"
                 def browser = params.BROWSER ?: "chrome"
@@ -380,6 +381,7 @@ pipeline {
                 )
 
                 echo "📧 Success email sent to ${params.EMAIL_TO}"
+                echo "   Duration: ${buildDuration}"
                 cleanWs()
             }
         }
@@ -400,7 +402,7 @@ pipeline {
                     echo "⚠️ Could not read Git info"
                 }
 
-                // 添加空值检查，防止 NullPointerException
+                // 添加空值检查
                 def buildDuration = env.BUILD_DURATION ?: "N/A"
                 def buildStatus = "FAILURE"
                 def browser = params.BROWSER ?: "chrome"
@@ -435,6 +437,7 @@ pipeline {
                 )
 
                 echo "📧 Failure email sent to ${params.EMAIL_TO}"
+                echo "   Duration: ${buildDuration}"
                 cleanWs()
             }
         }
