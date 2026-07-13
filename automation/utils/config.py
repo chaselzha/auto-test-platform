@@ -59,7 +59,7 @@ class Config:
     def _get_default_config(self):
         """获取默认配置"""
         return {
-            "base_url": "https://www.baidu.com",
+            "base_url": "https://www.bing.com",  # 👈 改为 Bing
             "browser": {
                 "type": "chrome",
                 "headless": False,
@@ -191,32 +191,8 @@ def load_config(env=None):
     return get_config(env)
 
 
-# ===== 便捷导入 =====
-__all__ = [
-    'Config',
-    'get_config',
-    'load_config',
-]
-
-# ===== 创建全局配置实例 =====
-_config_instance = None
-
-
-def get_config(env=None):
-    """获取全局配置实例"""
-    global _config_instance
-    if _config_instance is None:
-        _config_instance = Config(env)
-    return _config_instance
-
-
-def load_config(env=None):
-    """加载配置（兼容旧代码）"""
-    return get_config(env)
-
-
 # ===== 创建全局配置实例（兼容旧代码） =====
-config = get_config()  # 👈 恢复这个导出
+config = get_config()
 
 
 # ===== 便捷导入 =====
@@ -224,5 +200,5 @@ __all__ = [
     'Config',
     'get_config',
     'load_config',
-    'config',  # 👈 添加到导出列表
+    'config',
 ]
