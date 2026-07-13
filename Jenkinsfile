@@ -2,14 +2,6 @@ pipeline {
 
     agent any
 
-    // ===== 定义全局变量（在 pipeline 顶部） =====
-    variables {
-        GIT_BRANCH = "unknown"
-        GIT_COMMIT = "unknown"
-        GIT_MESSAGE = "unknown"
-        GIT_AUTHOR = "unknown"
-    }
-
     /************************************************
      * Pipeline Options
      ************************************************/
@@ -57,6 +49,13 @@ pipeline {
     environment {
 
         ALLURE_HOME = tool 'allure'
+
+        // Git 信息环境变量
+        GIT_BRANCH_NAME = ''
+        GIT_COMMIT_ID = ''
+        GIT_COMMIT_MSG = ''
+        GIT_AUTHOR = ''
+
         BUILD_STATUS = ''
         BUILD_DURATION = ''
         BUILD_START_TIME = ''
@@ -102,32 +101,42 @@ pipeline {
                             TimeZone.getTimeZone("Asia/Shanghai")
                     )
 
-                    // ===== 获取 Git 信息并赋值给全局变量 =====
-                    script.GIT_BRANCH = sh(
+                    // ===== 获取 Git 信息并保存到环境变量 =====
+                    def gitBranch = sh(
                             script: "git rev-parse --abbrev-ref HEAD",
                             returnStdout: true
                     ).trim()
 
-                    script.GIT_COMMIT = sh(
+                    def gitCommit = sh(
                             script: "git rev-parse --short HEAD",
                             returnStdout: true
                     ).trim()
 
-                    script.GIT_MESSAGE = sh(
+                    def gitMsg = sh(
                             script: "git log -1 --pretty=%s",
                             returnStdout: true
                     ).trim()
 
-                    script.GIT_AUTHOR = sh(
+                    def gitAuthor = sh(
                             script: "git log -1 --pretty=%an",
                             returnStdout: true
                     ).trim()
 
-                    // 同时也设置环境变量（备用）
-                    env.GIT_BRANCH_NAME = script.GIT_BRANCH
-                    env.GIT_COMMIT_ID = script.GIT_COMMIT
-                    env.GIT_COMMIT_MSG = script.GIT_MESSAGE
-                    env.GIT_AUTHOR = script.GIT_AUTHOR
+                    // 设置环境变量
+                    env.GIT_BRANCH_NAME = gitBranch
+                    env.GIT_COMMIT_ID = gitCommit
+                    env.GIT_COMMIT_MSG = gitMsg
+                    env.GIT_AUTHOR = gitAuthor
+
+                    // ===== 保存 Git 信息到文件（供 post 阶段使用） =====
+                    sh """
+                        mkdir -p .git-info
+                        echo "${gitBranch}" > .git-info/branch
+                        echo "${gitCommit}" > .git-info/commit
+                        echo "${gitMsg}" > .git-info/message
+                        echo "${gitAuthor}" > .git-info/author
+                        echo "Git info saved to .git-info/"
+                    """
 
                     // ===== 为邮件通知准备的变量 =====
                     env.ALLURE_REPORT_URL = "${env.BUILD_URL}allure/"
@@ -150,6 +159,8 @@ pipeline {
                             echo ""
                             if [ -f "ci/email-success.html" ] && [ -f "ci/email-failure.html" ]; then
                                 echo "✅ Both email templates found!"
+                                echo "✅ email-success.html exists"
+                                echo "✅ email-failure.html exists"
                             else
                                 echo "⚠️ Some template files are missing"
                             fi
@@ -162,10 +173,10 @@ pipeline {
 ==============================
 Git Information (from Checkout)
 
-Branch : ${script.GIT_BRANCH}
-Commit : ${script.GIT_COMMIT}
-Author : ${script.GIT_AUTHOR}
-Message: ${script.GIT_MESSAGE}
+Branch : ${env.GIT_BRANCH_NAME}
+Commit : ${env.GIT_COMMIT_ID}
+Author : ${env.GIT_AUTHOR}
+Message: ${env.GIT_COMMIT_MSG}
 Allure: ${env.ALLURE_REPORT_URL}
 ==============================
 """
@@ -357,14 +368,20 @@ Allure: ${env.ALLURE_REPORT_URL}
 
             script {
 
-                // ===== 从全局变量读取 Git 信息 =====
-                def gitBranch = script.GIT_BRANCH ?: "unknown"
-                def gitCommit = script.GIT_COMMIT ?: "unknown"
-                def gitMessage = script.GIT_MESSAGE ?: "unknown"
-                def gitAuthor = script.GIT_AUTHOR ?: "unknown"
+                // ===== 从文件读取 Git 信息 =====
+                def gitBranch = "unknown"
+                def gitCommit = "unknown"
+                def gitMessage = "unknown"
+                def gitAuthor = "unknown"
 
-                // 如果全局变量为空，尝试从环境变量读取
-                if (gitBranch == "unknown") {
+                try {
+                    gitBranch = readFile(".git-info/branch").trim()
+                    gitCommit = readFile(".git-info/commit").trim()
+                    gitMessage = readFile(".git-info/message").trim()
+                    gitAuthor = readFile(".git-info/author").trim()
+                    echo "✅ Loaded Git info from .git-info/"
+                } catch (Exception e) {
+                    echo "⚠️ Could not read Git info from .git-info/, using environment variables"
                     gitBranch = env.GIT_BRANCH_NAME ?: "unknown"
                     gitCommit = env.GIT_COMMIT_ID ?: "unknown"
                     gitMessage = env.GIT_COMMIT_MSG ?: "unknown"
@@ -474,14 +491,20 @@ Allure: ${env.ALLURE_REPORT_URL}
 
             script {
 
-                // ===== 从全局变量读取 Git 信息 =====
-                def gitBranch = script.GIT_BRANCH ?: "unknown"
-                def gitCommit = script.GIT_COMMIT ?: "unknown"
-                def gitMessage = script.GIT_MESSAGE ?: "unknown"
-                def gitAuthor = script.GIT_AUTHOR ?: "unknown"
+                // ===== 从文件读取 Git 信息 =====
+                def gitBranch = "unknown"
+                def gitCommit = "unknown"
+                def gitMessage = "unknown"
+                def gitAuthor = "unknown"
 
-                // 如果全局变量为空，尝试从环境变量读取
-                if (gitBranch == "unknown") {
+                try {
+                    gitBranch = readFile(".git-info/branch").trim()
+                    gitCommit = readFile(".git-info/commit").trim()
+                    gitMessage = readFile(".git-info/message").trim()
+                    gitAuthor = readFile(".git-info/author").trim()
+                    echo "✅ Loaded Git info from .git-info/"
+                } catch (Exception e) {
+                    echo "⚠️ Could not read Git info from .git-info/, using environment variables"
                     gitBranch = env.GIT_BRANCH_NAME ?: "unknown"
                     gitCommit = env.GIT_COMMIT_ID ?: "unknown"
                     gitMessage = env.GIT_COMMIT_MSG ?: "unknown"
