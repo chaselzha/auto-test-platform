@@ -71,46 +71,137 @@ pipeline {
      ************************************************/
     stages {
 
-        /************************************************
-         * Checkout Source Code
-         ************************************************/
-        stage('Checkout') {
-            steps {
-                checkout scm
-                script {
-                    env.BUILD_START_TIME = new Date().format(
-                            "yyyy-MM-dd HH:mm:ss",
-                            TimeZone.getTimeZone("Asia/Shanghai")
-                    )
+       /************************************************
+ * Checkout Source Code
+ ************************************************/
+stage('Checkout') {
+    steps {
+        // 清理工作空间，确保全新拉取
+        cleanWs()
 
-                    env.GIT_BRANCH_NAME = sh(
-                            script: "git rev-parse --abbrev-ref HEAD",
-                            returnStdout: true
-                    ).trim()
+        // 使用更明确的 checkout 配置
+        checkout([
+            $class: 'GitSCM',
+            branches: [[name: '*/main']],
+            userRemoteConfigs: [[
+                url: 'git@github.com:chaselzha/auto-test-platform.git',
+                credentialsId: 'github-ssh-key'
+            ]],
+            extensions: [
+                [$class: 'CleanCheckout'],
+                [$class: 'CloneOption',
+                    depth: 0,
+                    noTags: false,
+                    reference: '',
+                    shallow: false,
+                    timeout: 10
+                ],
+                [$class: 'PruneStaleBranch'],
+                [$class: 'LocalBranch', localBranch: 'main']
+            ]
+        ])
 
-                    env.GIT_COMMIT_ID = sh(
-                            script: "git rev-parse --short HEAD",
-                            returnStdout: true
-                    ).trim()
+        script {
+            env.BUILD_START_TIME = new Date().format(
+                    "yyyy-MM-dd HH:mm:ss",
+                    TimeZone.getTimeZone("Asia/Shanghai")
+            )
 
-                    env.GIT_COMMIT_MSG = sh(
-                            script: "git log -1 --pretty=%s",
-                            returnStdout: true
-                    ).trim()
+            env.GIT_BRANCH_NAME = sh(
+                    script: "git rev-parse --abbrev-ref HEAD",
+                    returnStdout: true
+            ).trim()
 
-                    env.GIT_AUTHOR = sh(
-                            script: "git log -1 --pretty=%an",
-                            returnStdout: true
-                    ).trim()
+            env.GIT_COMMIT_ID = sh(
+                    script: "git rev-parse --short HEAD",
+                    returnStdout: true
+            ).trim()
 
-                    // ===== 为邮件通知准备的变量 =====
-                    env.ALLURE_REPORT_URL = "${env.BUILD_URL}allure/"
+            env.GIT_COMMIT_MSG = sh(
+                    script: "git log -1 --pretty=%s",
+                    returnStdout: true
+            ).trim()
 
-                    // 设置默认值，post 阶段会更新
-                    env.BUILD_STATUS = "RUNNING"
-                    env.BUILD_DURATION = "Calculating..."
+            env.GIT_AUTHOR = sh(
+                    script: "git log -1 --pretty=%an",
+                    returnStdout: true
+            ).trim()
 
-                    echo """
+            // ===== 为邮件通知准备的变量 =====
+            env.ALLURE_REPORT_URL = "${env.BUILD_URL}allure/"
+            env.BUILD_STATUS = "RUNNING"
+            env.BUILD_DURATION = "Calculating..."
+
+            // ===== 验证 ci 目录和文件是否存在 =====
+            sh '''
+                echo "========================================="
+                echo "Checking ci directory contents"
+                echo "========================================="
+                pwd
+                echo ""
+                echo "Listing all files in workspace:"
+                ls -la
+                echo ""
+                if [ -d "ci" ]; then
+                    echo "✅ ci directory exists"
+                    ls -la ci/
+                    echo ""
+                    if [ -f "ci/email-success.html" ] && [ -f "ci/email-failure.html" ]; then
+                        echo "✅ Both email templates found!"
+                        echo "✅ email-success.html exists"
+                        echo "✅ email-failure.html exists"
+                    else
+                        echo "⚠️ Some template files are missing:"
+                        ls -la ci/*.html 2>/dev/null || echo "No HTML files found in ci/"
+                    fi
+                else
+                    echo "❌ ci directory NOT found!"
+                    echo "Creating ci directory with default templates..."
+                    mkdir -p ci
+                    cat > ci/email-success.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>构建成功</title></head>
+<body>
+    <h2>✅ 自动化测试构建成功</h2>
+    <p>项目：${JOB_NAME}</p>
+    <p>构建编号：#${BUILD_NUMBER}</p>
+    <p>测试环境：${ENV}</p>
+    <p>构建状态：${BUILD_STATUS}</p>
+    <p>构建耗时：${BUILD_DURATION}</p>
+    <p>Git 分支：${GIT_BRANCH}</p>
+    <p>Git 提交：${GIT_COMMIT}</p>
+    <p>提交作者：${GIT_AUTHOR}</p>
+    <p>提交信息：${GIT_MESSAGE}</p>
+    <p><a href="${ALLURE_URL}">查看 Allure 报告</a></p>
+    <p><a href="${BUILD_URL}">查看 Jenkins 构建</a></p>
+</body>
+</html>
+EOF
+                    cat > ci/email-failure.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>构建失败</title></head>
+<body>
+    <h2>❌ 自动化测试构建失败</h2>
+    <p>项目：${JOB_NAME}</p>
+    <p>构建编号：#${BUILD_NUMBER}</p>
+    <p>测试环境：${ENV}</p>
+    <p>构建状态：${BUILD_STATUS}</p>
+    <p>构建耗时：${BUILD_DURATION}</p>
+    <p>Git 分支：${GIT_BRANCH}</p>
+    <p>Git 提交：${GIT_COMMIT}</p>
+    <p>提交作者：${GIT_AUTHOR}</p>
+    <p>提交信息：${GIT_MESSAGE}</p>
+    <p><a href="${BUILD_URL}">查看 Jenkins 构建</a></p>
+</body>
+</html>
+EOF
+                    echo "✅ Default email templates created in ci/"
+                fi
+            '''
+
+            echo """
 ==============================
 Git Information
 
@@ -121,9 +212,9 @@ Message: ${env.GIT_COMMIT_MSG}
 Allure: ${env.ALLURE_REPORT_URL}
 ==============================
 """
-                }
-            }
         }
+    }
+}
 
         /************************************************
          * Environment Check
@@ -433,18 +524,20 @@ Allure: ${env.ALLURE_REPORT_URL}
             def jobName = env.JOB_NAME
             def buildNumber = env.BUILD_NUMBER
             def testEnv = params.ENV
-            def gitBranch = env.GIT_BRANCH_NAME
-            def gitCommit = env.GIT_COMMIT_ID
-            def gitMessage = env.GIT_COMMIT_MSG
-            def gitAuthor = env.GIT_AUTHOR
+            def gitBranch = env.GIT_BRANCH_NAME ?: "unknown"
+            def gitCommit = env.GIT_COMMIT_ID ?: "unknown"
+            def gitMessage = env.GIT_COMMIT_MSG ?: "unknown"
+            def gitAuthor = env.GIT_AUTHOR ?: "unknown"
             def buildUrl = env.BUILD_URL
-            def allureUrl = env.ALLURE_REPORT_URL
+            def allureUrl = env.ALLURE_REPORT_URL ?: "N/A"
 
             // 尝试读取文件，如果不存在则使用内联 HTML
             def html
+            def templateFile = "ci/email-success.html"
             try {
-                html = readFile("ci/email-success.html")
-                echo "✅ Loaded email template from ci/email-success.html"
+                html = readFile(templateFile)
+                echo "✅ Loaded email template from ${templateFile}"
+
                 // 替换文件中的占位符
                 html = html
                         .replace('${JOB_NAME}', jobName)
@@ -460,8 +553,8 @@ Allure: ${env.ALLURE_REPORT_URL}
                         .replace('${ALLURE_URL}', allureUrl)
                         .replace('${BUILD_TIMESTAMP}', buildTimestamp)
             } catch (Exception e) {
-                echo "⚠️ ci/email-success.html not found, using inline template"
-                // 使用内联 HTML（使用字符串插值）
+                echo "⚠️ ${templateFile} not found, using inline template"
+                // 使用内联 HTML
                 html = """
                 <!DOCTYPE html>
                 <html>
@@ -481,9 +574,7 @@ Allure: ${env.ALLURE_REPORT_URL}
                 </head>
                 <body>
                     <div class="container">
-                        <div class="header">
-                            <h2>✅ 自动化测试构建成功</h2>
-                        </div>
+                        <div class="header"><h2>✅ 自动化测试构建成功</h2></div>
                         <div class="content">
                             <h3>📋 构建信息</h3>
                             <div class="detail"><span class="label">项目名称：</span> ${jobName}</div>
@@ -501,9 +592,7 @@ Allure: ${env.ALLURE_REPORT_URL}
                             <div class="detail"><span class="label">Allure 测试报告：</span> <a href="${allureUrl}">${allureUrl}</a></div>
                             <div class="detail"><span class="label">Jenkins 构建：</span> <a href="${buildUrl}">${buildUrl}</a></div>
                         </div>
-                        <div class="footer">
-                            <p>此邮件由 Jenkins 自动发送，请勿回复。</p>
-                        </div>
+                        <div class="footer"><p>此邮件由 Jenkins 自动发送，请勿回复。</p></div>
                     </div>
                 </body>
                 </html>
@@ -538,19 +627,20 @@ Allure: ${env.ALLURE_REPORT_URL}
             def jobName = env.JOB_NAME
             def buildNumber = env.BUILD_NUMBER
             def testEnv = params.ENV
-            def gitBranch = env.GIT_BRANCH_NAME
-            def gitCommit = env.GIT_COMMIT_ID
-            def gitMessage = env.GIT_COMMIT_MSG
-            def gitAuthor = env.GIT_AUTHOR
+            def gitBranch = env.GIT_BRANCH_NAME ?: "unknown"
+            def gitCommit = env.GIT_COMMIT_ID ?: "unknown"
+            def gitMessage = env.GIT_COMMIT_MSG ?: "unknown"
+            def gitAuthor = env.GIT_AUTHOR ?: "unknown"
             def buildUrl = env.BUILD_URL
-            def allureUrl = env.ALLURE_REPORT_URL
+            def allureUrl = env.ALLURE_REPORT_URL ?: "N/A"
 
             // 尝试读取文件，如果不存在则使用内联 HTML
             def html
+            def templateFile = "ci/email-failure.html"
             try {
-                html = readFile("ci/email-failure.html")
-                echo "✅ Loaded email template from ci/email-failure.html"
-                // 替换文件中的占位符
+                html = readFile(templateFile)
+                echo "✅ Loaded email template from ${templateFile}"
+
                 html = html
                         .replace('${JOB_NAME}', jobName)
                         .replace('${BUILD_NUMBER}', buildNumber)
@@ -565,8 +655,7 @@ Allure: ${env.ALLURE_REPORT_URL}
                         .replace('${ALLURE_URL}', allureUrl)
                         .replace('${BUILD_TIMESTAMP}', buildTimestamp)
             } catch (Exception e) {
-                echo "⚠️ ci/email-failure.html not found, using inline template"
-                // 使用内联 HTML（使用字符串插值）
+                echo "⚠️ ${templateFile} not found, using inline template"
                 html = """
                 <!DOCTYPE html>
                 <html>
@@ -587,13 +676,9 @@ Allure: ${env.ALLURE_REPORT_URL}
                 </head>
                 <body>
                     <div class="container">
-                        <div class="header">
-                            <h2>❌ 自动化测试构建失败</h2>
-                        </div>
+                        <div class="header"><h2>❌ 自动化测试构建失败</h2></div>
                         <div class="content">
-                            <div class="error-box">
-                                <strong>⚠️ 构建失败，请及时检查！</strong>
-                            </div>
+                            <div class="error-box"><strong>⚠️ 构建失败，请及时检查！</strong></div>
                             <h3>📋 构建信息</h3>
                             <div class="detail"><span class="label">项目名称：</span> ${jobName}</div>
                             <div class="detail"><span class="label">构建编号：</span> #${buildNumber}</div>
@@ -610,9 +695,7 @@ Allure: ${env.ALLURE_REPORT_URL}
                             <div class="detail"><span class="label">Allure 测试报告：</span> <a href="${allureUrl}">${allureUrl}</a></div>
                             <div class="detail"><span class="label">Jenkins 构建：</span> <a href="${buildUrl}">${buildUrl}</a></div>
                         </div>
-                        <div class="footer">
-                            <p>此邮件由 Jenkins 自动发送，请勿回复。</p>
-                        </div>
+                        <div class="footer"><p>此邮件由 Jenkins 自动发送，请勿回复。</p></div>
                     </div>
                 </body>
                 </html>
