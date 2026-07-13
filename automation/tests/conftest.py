@@ -132,7 +132,7 @@ def driver(browser, headless):
 @pytest.fixture
 def baidu_page(driver):
     """BaiduPage fixture"""
-    return BaiduPage(driver)
+    return BingPage(driver)
 
 
 # ===== 测试失败时自动截图（线程安全） =====

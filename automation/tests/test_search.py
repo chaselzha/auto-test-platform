@@ -1,8 +1,7 @@
 # automation/tests/test_search.py
 import allure
 import pytest
-#from pages.baidu_page import BaiduPage
-from pages.bing_page import BingPage
+from pages.bing_page import BingPage  # 👈 改为 BingPage
 from utils.config import get_config
 from utils.data_reader import load_yaml
 from utils.logger import logger
@@ -49,7 +48,7 @@ class TestSearch:
             logger.info(f"✅ 已打开首页")
 
         # Step 2: 创建页面对象并搜索
-        page = BaiduPage(driver)
+        page = BingPage(driver)  # 👈 改为 BingPage
 
         with allure.step(f"2. 输入搜索词: '{keyword}'"):
             page.search(keyword)
