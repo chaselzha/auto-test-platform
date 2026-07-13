@@ -8,7 +8,18 @@ from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
 from utils.logger import logger
-from utils.config import config  # 👈 使用新的 config
+
+# ===== 延迟导入 config，避免循环导入 =====
+_config = None
+
+
+def _get_config():
+    """延迟加载 config，避免循环导入"""
+    global _config
+    if _config is None:
+        from utils.config import config
+        _config = config
+    return _config
 
 
 def get_driver(browser_type=None, headless=None):
@@ -22,6 +33,8 @@ def get_driver(browser_type=None, headless=None):
     Returns:
         WebDriver 实例
     """
+    config = _get_config()
+
     # 从配置或参数获取
     if browser_type is None:
         browser_type = config.browser_type
@@ -42,6 +55,8 @@ def get_driver(browser_type=None, headless=None):
 
 def _create_chrome_driver(headless=False):
     """创建 Chrome 驱动"""
+    config = _get_config()
+
     options = ChromeOptions()
 
     options.add_argument("--start-maximized")
@@ -68,6 +83,8 @@ def _create_chrome_driver(headless=False):
 
 def _create_firefox_driver(headless=False):
     """创建 Firefox 驱动"""
+    config = _get_config()
+
     options = FirefoxOptions()
     options.add_argument("--start-maximized")
 
