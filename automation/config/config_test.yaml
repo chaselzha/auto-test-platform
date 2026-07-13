@@ -1,5 +1,5 @@
 # config/config_test.yaml
-base_url: "https://www.baidu.com"
+base_url: "https://www.bing.com"
 
 browser:
   type: chrome
