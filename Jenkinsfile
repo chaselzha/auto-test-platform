@@ -71,7 +71,7 @@ pipeline {
      ************************************************/
     stages {
 
-       /************************************************
+/************************************************
  * Checkout Source Code
  ************************************************/
 stage('Checkout') {
@@ -79,7 +79,6 @@ stage('Checkout') {
         // 清理工作空间，确保全新拉取
         cleanWs()
 
-        // 使用更明确的 checkout 配置
         checkout([
             $class: 'GitSCM',
             branches: [[name: '*/main']],
@@ -107,25 +106,41 @@ stage('Checkout') {
                     TimeZone.getTimeZone("Asia/Shanghai")
             )
 
-            env.GIT_BRANCH_NAME = sh(
+            // 获取 Git 信息
+            def gitBranch = sh(
                     script: "git rev-parse --abbrev-ref HEAD",
                     returnStdout: true
             ).trim()
 
-            env.GIT_COMMIT_ID = sh(
+            def gitCommit = sh(
                     script: "git rev-parse --short HEAD",
                     returnStdout: true
             ).trim()
 
-            env.GIT_COMMIT_MSG = sh(
+            def gitMsg = sh(
                     script: "git log -1 --pretty=%s",
                     returnStdout: true
             ).trim()
 
-            env.GIT_AUTHOR = sh(
+            def gitAuthor = sh(
                     script: "git log -1 --pretty=%an",
                     returnStdout: true
             ).trim()
+
+            // 设置环境变量（供后续阶段使用）
+            env.GIT_BRANCH_NAME = gitBranch
+            env.GIT_COMMIT_ID = gitCommit
+            env.GIT_COMMIT_MSG = gitMsg
+            env.GIT_AUTHOR = gitAuthor
+
+            // ===== 保存 Git 信息到文件（供 post 阶段使用） =====
+            sh """
+                mkdir -p .git-info
+                echo "${gitBranch}" > .git-info/branch
+                echo "${gitCommit}" > .git-info/commit
+                echo "${gitMsg}" > .git-info/message
+                echo "${gitAuthor}" > .git-info/author
+            """
 
             // ===== 为邮件通知准备的变量 =====
             env.ALLURE_REPORT_URL = "${env.BUILD_URL}allure/"
@@ -156,48 +171,6 @@ stage('Checkout') {
                     fi
                 else
                     echo "❌ ci directory NOT found!"
-                    echo "Creating ci directory with default templates..."
-                    mkdir -p ci
-                    cat > ci/email-success.html << 'EOF'
-<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><title>构建成功</title></head>
-<body>
-    <h2>✅ 自动化测试构建成功</h2>
-    <p>项目：${JOB_NAME}</p>
-    <p>构建编号：#${BUILD_NUMBER}</p>
-    <p>测试环境：${ENV}</p>
-    <p>构建状态：${BUILD_STATUS}</p>
-    <p>构建耗时：${BUILD_DURATION}</p>
-    <p>Git 分支：${GIT_BRANCH}</p>
-    <p>Git 提交：${GIT_COMMIT}</p>
-    <p>提交作者：${GIT_AUTHOR}</p>
-    <p>提交信息：${GIT_MESSAGE}</p>
-    <p><a href="${ALLURE_URL}">查看 Allure 报告</a></p>
-    <p><a href="${BUILD_URL}">查看 Jenkins 构建</a></p>
-</body>
-</html>
-EOF
-                    cat > ci/email-failure.html << 'EOF'
-<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><title>构建失败</title></head>
-<body>
-    <h2>❌ 自动化测试构建失败</h2>
-    <p>项目：${JOB_NAME}</p>
-    <p>构建编号：#${BUILD_NUMBER}</p>
-    <p>测试环境：${ENV}</p>
-    <p>构建状态：${BUILD_STATUS}</p>
-    <p>构建耗时：${BUILD_DURATION}</p>
-    <p>Git 分支：${GIT_BRANCH}</p>
-    <p>Git 提交：${GIT_COMMIT}</p>
-    <p>提交作者：${GIT_AUTHOR}</p>
-    <p>提交信息：${GIT_MESSAGE}</p>
-    <p><a href="${BUILD_URL}">查看 Jenkins 构建</a></p>
-</body>
-</html>
-EOF
-                    echo "✅ Default email templates created in ci/"
                 fi
             '''
 
@@ -507,11 +480,31 @@ Allure: ${env.ALLURE_REPORT_URL}
     /************************************************
      * Post Actions
      ************************************************/
-    post {
+   post {
 
     success {
 
         script {
+
+            // 从文件读取 Git 信息（如果文件不存在则使用默认值）
+            def gitBranch = "unknown"
+            def gitCommit = "unknown"
+            def gitMessage = "unknown"
+            def gitAuthor = "unknown"
+
+            try {
+                gitBranch = readFile(".git-info/branch").trim()
+                gitCommit = readFile(".git-info/commit").trim()
+                gitMessage = readFile(".git-info/message").trim()
+                gitAuthor = readFile(".git-info/author").trim()
+                echo "✅ Loaded Git info from .git-info/"
+            } catch (Exception e) {
+                echo "⚠️ Could not read Git info from .git-info/, using environment variables"
+                gitBranch = env.GIT_BRANCH_NAME ?: "unknown"
+                gitCommit = env.GIT_COMMIT_ID ?: "unknown"
+                gitMessage = env.GIT_COMMIT_MSG ?: "unknown"
+                gitAuthor = env.GIT_AUTHOR ?: "unknown"
+            }
 
             // 在 post 阶段设置这些变量
             def buildStatus = "SUCCESS"
@@ -524,22 +517,13 @@ Allure: ${env.ALLURE_REPORT_URL}
             def jobName = env.JOB_NAME
             def buildNumber = env.BUILD_NUMBER
             def testEnv = params.ENV
-            def gitBranch = env.GIT_BRANCH_NAME ?: "unknown"
-            def gitCommit = env.GIT_COMMIT_ID ?: "unknown"
-            def gitMessage = env.GIT_COMMIT_MSG ?: "unknown"
-            def gitAuthor = env.GIT_AUTHOR ?: "unknown"
             def buildUrl = env.BUILD_URL
             def allureUrl = env.ALLURE_REPORT_URL ?: "N/A"
 
-            // 使用 WORKSPACE 环境变量构建绝对路径
-            def workspace = env.WORKSPACE
-            def templateFile = "${workspace}/ci/email-success.html"
-
+            // 尝试读取文件，如果不存在则使用内联 HTML
             def html
             try {
-                // 检查文件是否存在
                 if (fileExists("ci/email-success.html")) {
-                    echo "✅ Found ci/email-success.html in workspace"
                     html = readFile("ci/email-success.html")
                     echo "✅ Loaded email template from ci/email-success.html"
                 } else {
@@ -561,8 +545,8 @@ Allure: ${env.ALLURE_REPORT_URL}
                         .replace('${ALLURE_URL}', allureUrl)
                         .replace('${BUILD_TIMESTAMP}', buildTimestamp)
             } catch (Exception e) {
-                echo "⚠️ ci/email-success.html not found, using inline template"
-                // 使用内联 HTML（保持不变）
+                echo "⚠️ ci/email-success.html not found or read error, using inline template"
+                // 使用内联 HTML（包含 Git 信息）
                 html = """
                 <!DOCTYPE html>
                 <html>
@@ -615,6 +599,8 @@ Allure: ${env.ALLURE_REPORT_URL}
             )
 
             echo "📧 Success email sent to ${params.EMAIL_TO}"
+            echo "   Git Branch: ${gitBranch}"
+            echo "   Git Commit: ${gitCommit}"
 
         }
 
@@ -623,6 +609,26 @@ Allure: ${env.ALLURE_REPORT_URL}
     failure {
 
         script {
+
+            // 从文件读取 Git 信息（如果文件不存在则使用默认值）
+            def gitBranch = "unknown"
+            def gitCommit = "unknown"
+            def gitMessage = "unknown"
+            def gitAuthor = "unknown"
+
+            try {
+                gitBranch = readFile(".git-info/branch").trim()
+                gitCommit = readFile(".git-info/commit").trim()
+                gitMessage = readFile(".git-info/message").trim()
+                gitAuthor = readFile(".git-info/author").trim()
+                echo "✅ Loaded Git info from .git-info/"
+            } catch (Exception e) {
+                echo "⚠️ Could not read Git info from .git-info/, using environment variables"
+                gitBranch = env.GIT_BRANCH_NAME ?: "unknown"
+                gitCommit = env.GIT_COMMIT_ID ?: "unknown"
+                gitMessage = env.GIT_COMMIT_MSG ?: "unknown"
+                gitAuthor = env.GIT_AUTHOR ?: "unknown"
+            }
 
             // 在 post 阶段设置这些变量
             def buildStatus = "FAILURE"
@@ -635,17 +641,13 @@ Allure: ${env.ALLURE_REPORT_URL}
             def jobName = env.JOB_NAME
             def buildNumber = env.BUILD_NUMBER
             def testEnv = params.ENV
-            def gitBranch = env.GIT_BRANCH_NAME ?: "unknown"
-            def gitCommit = env.GIT_COMMIT_ID ?: "unknown"
-            def gitMessage = env.GIT_COMMIT_MSG ?: "unknown"
-            def gitAuthor = env.GIT_AUTHOR ?: "unknown"
             def buildUrl = env.BUILD_URL
             def allureUrl = env.ALLURE_REPORT_URL ?: "N/A"
 
+            // 尝试读取文件，如果不存在则使用内联 HTML
             def html
             try {
                 if (fileExists("ci/email-failure.html")) {
-                    echo "✅ Found ci/email-failure.html in workspace"
                     html = readFile("ci/email-failure.html")
                     echo "✅ Loaded email template from ci/email-failure.html"
                 } else {
@@ -666,7 +668,7 @@ Allure: ${env.ALLURE_REPORT_URL}
                         .replace('${ALLURE_URL}', allureUrl)
                         .replace('${BUILD_TIMESTAMP}', buildTimestamp)
             } catch (Exception e) {
-                echo "⚠️ ci/email-failure.html not found, using inline template"
+                echo "⚠️ ci/email-failure.html not found or read error, using inline template"
                 html = """
                 <!DOCTYPE html>
                 <html>
@@ -721,6 +723,8 @@ Allure: ${env.ALLURE_REPORT_URL}
             )
 
             echo "📧 Failure email sent to ${params.EMAIL_TO}"
+            echo "   Git Branch: ${gitBranch}"
+            echo "   Git Commit: ${gitCommit}"
 
         }
 
