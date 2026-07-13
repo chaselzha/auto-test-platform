@@ -174,3 +174,26 @@ def test_logging(request):
     yield
 
     logger.info(f"✅ 测试执行完成: {test_name}")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def allure_environment(env):
+    """生成 Allure 环境信息"""
+    config = load_config(env)
+    env_file = "automation/reports/allure-results/environment.properties"
+
+    # 确保目录存在
+    os.makedirs(os.path.dirname(env_file), exist_ok=True)
+
+    with open(env_file, "w", encoding="utf-8") as f:
+        f.write(f"Browser={config.browser_type}\n")
+        f.write(f"Browser.Version=150.0.7871.49\n")
+        f.write(f"Environment={env}\n")
+        f.write(f"OS={sys.platform}\n")
+        f.write(f"Python={sys.version.split()[0]}\n")
+        f.write(f"Jenkins.Build={os.getenv('BUILD_NUMBER', 'local')}\n")
+        f.write(f"Test.Environment={env}\n")
+        f.write(f"Execution.Time={datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+
+    logger.info(f"✅ Allure 环境信息已生成")
+    return config
