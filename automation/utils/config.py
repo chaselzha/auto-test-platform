@@ -2,7 +2,7 @@
 import os
 import yaml
 from pathlib import Path
-from utils.logger import logger
+from .logger import logger
 
 
 class Config:
@@ -59,7 +59,7 @@ class Config:
     def _get_default_config(self):
         """获取默认配置"""
         return {
-            "base_url": "https://www.bing.com",  # 👈 改为 Bing
+            "base_url": "https://www.bing.com",
             "browser": {
                 "type": "chrome",
                 "headless": False,
@@ -101,7 +101,16 @@ class Config:
             logger.debug(f"📌 使用环境变量 BASE_URL={os.getenv('BASE_URL')}")
 
     def get(self, key, default=None):
-        """获取配置值，支持点号分隔的键"""
+        """
+        获取配置值，支持点号分隔的键
+
+        Args:
+            key: 配置键，如 "browser.type"
+            default: 默认值
+
+        Returns:
+            配置值
+        """
         keys = key.split(".")
         value = self._config
 
@@ -114,7 +123,13 @@ class Config:
         return value
 
     def set(self, key, value):
-        """设置配置值"""
+        """
+        设置配置值
+
+        Args:
+            key: 配置键，如 "browser.type"
+            value: 配置值
+        """
         keys = key.split(".")
         target = self._config
 
@@ -127,46 +142,57 @@ class Config:
 
     @property
     def base_url(self):
+        """获取基础 URL"""
         return self.get("base_url")
 
     @property
     def browser_type(self):
+        """获取浏览器类型"""
         return self.get("browser.type", "chrome")
 
     @property
     def headless(self):
+        """获取无头模式"""
         return self.get("browser.headless", False)
 
     @property
     def timeout(self):
+        """获取超时时间"""
         return self.get("browser.timeout", 10)
 
     @property
     def implicit_wait(self):
+        """获取隐式等待时间"""
         return self.get("wait.implicit", 10)
 
     @property
     def explicit_wait(self):
+        """获取显式等待时间"""
         return self.get("wait.explicit", 20)
 
     @property
     def screenshot_dir(self):
+        """获取截图目录"""
         return self.get("screenshot.save_dir", "screenshots")
 
     @property
     def allure_dir(self):
+        """获取 Allure 报告目录"""
         return self.get("report.dir", "reports/allure-results")
 
     def __getitem__(self, key):
+        """支持 config['key'] 访问"""
         return self.get(key)
 
     def __setitem__(self, key, value):
+        """支持 config['key'] = value 赋值"""
         self.set(key, value)
 
     def __repr__(self):
         return f"Config(env='{self.env}')"
 
     def reload(self, env=None):
+        """重新加载配置"""
         if env:
             self.env = env
         self._config = self._load_config()
