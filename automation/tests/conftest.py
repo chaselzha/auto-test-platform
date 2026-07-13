@@ -8,8 +8,10 @@ import allure
 from utils.driver_factory import get_driver
 from utils.config import load_config
 from utils.logger import logger
-#from pages.baidu_page import BaiduPage
+from utils.performance import PerformanceMonitor, measure_context
+from utils.retry import retry
 from pages.bing_page import BingPage
+
 # ===== 设置编码 =====
 os.environ['PYTHONIOENCODING'] = 'utf-8'
 os.environ['LANG'] = 'zh_CN.UTF-8'
@@ -26,7 +28,7 @@ def ensure_dir(path):
         try:
             os.makedirs(path)
         except FileExistsError:
-            pass  # 其他线程已创建
+            pass
 
 
 # ===== 命令行参数 =====
@@ -49,6 +51,12 @@ def pytest_addoption(parser):
         default=False,
         help="是否启用无头模式"
     )
+    parser.addoption(
+        "--performance",
+        action="store_true",
+        default=False,
+        help="是否启用性能监控"
+    )
 
 
 # ===== Session 级别 Fixture =====
@@ -68,6 +76,12 @@ def browser(request):
 def headless(request):
     """获取无头模式参数"""
     return request.config.getoption("--headless")
+
+
+@pytest.fixture(scope="session")
+def performance_enabled(request):
+    """获取性能监控参数"""
+    return request.config.getoption("--performance")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -100,56 +114,49 @@ def allure_environment(env):
 
 # ===== 浏览器 Fixture =====
 @pytest.fixture
-def driver(browser, headless):
+def driver(browser, headless, performance_enabled):
     """
     WebDriver fixture
-
-    支持参数:
-        --browser: chrome/firefox
-        --headless: 启用无头模式
     """
     logger.info("🚀 启动浏览器")
 
-    # 设置环境变量，让 get_driver 使用
     os.environ['BROWSER'] = browser
     if headless:
         os.environ['HEADLESS'] = 'true'
 
-    driver = get_driver()
+    with measure_context("browser_startup"):
+        driver = get_driver()
 
     logger.info(f"✅ 浏览器启动成功: {browser}")
 
     yield driver
 
     logger.info("🔚 关闭浏览器")
-    try:
-        driver.quit()
-    except Exception as e:
-        logger.warning(f"关闭浏览器异常: {e}")
+    with measure_context("browser_shutdown"):
+        try:
+            driver.quit()
+        except Exception as e:
+            logger.warning(f"关闭浏览器异常: {e}")
 
 
 # ===== 页面对象 Fixture =====
 @pytest.fixture
-def baidu_page(driver):
-    """BaiduPage fixture"""
+def bing_page(driver):
+    """BingPage fixture"""
     return BingPage(driver)
 
 
 # ===== 测试失败时自动截图（线程安全） =====
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
-    """
-    测试失败时自动截图并附加到 Allure 报告
-    """
+    """测试失败时自动截图"""
     outcome = yield
     rep = outcome.get_result()
 
     if rep.when == "call" and rep.failed:
-        # 获取 driver
         driver = item.funcargs.get("driver")
         if driver:
             try:
-                # 截图并附加到 Allure
                 screenshot = driver.get_screenshot_as_png()
                 allure.attach(
                     screenshot,
@@ -158,11 +165,8 @@ def pytest_runtest_makereport(item, call):
                 )
                 logger.error(f"❌ 测试失败: {item.name}")
 
-                # 保存截图到文件（线程安全）
                 screenshot_dir = "screenshots"
                 ensure_dir(screenshot_dir)
-
-                # 使用时间戳和进程 ID 避免文件名冲突
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 pid = os.getpid()
                 safe_name = item.name.replace("[", "_").replace("]", "_").replace("\\", "_")
@@ -185,6 +189,11 @@ def pytest_sessionstart(session):
 
 def pytest_sessionfinish(session, exitstatus):
     """测试会话结束时执行"""
+    # 输出性能报告
+    if session.config.getoption("--performance"):
+        from utils.performance import PerformanceMonitor
+        logger.info(PerformanceMonitor.report())
+
     logger.info("=" * 50)
     logger.info("✅ 自动化测试会话结束")
     logger.info("=" * 50)
