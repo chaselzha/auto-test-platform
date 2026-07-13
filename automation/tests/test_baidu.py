@@ -2,7 +2,7 @@
 import allure
 import pytest
 from pages.baidu_page import BaiduPage
-from utils.config import get_config  # 👈 改用 get_config
+from utils.config import get_config
 from utils.data_reader import load_yaml
 from utils.logger import logger
 
@@ -28,14 +28,13 @@ class TestBaiduSearch:
         # ===== 获取配置 =====
         config = get_config()
         keyword = case["keyword"]
-        expected_title = case.get("expected_title", f"{keyword}_百度搜索")
 
         logger.info(f"🔍 开始测试: {keyword}")
         logger.info(f"🌍 当前环境: {config.env}")
 
         # ===== Step 1: 打开首页 =====
         with allure.step(f"1. 打开百度首页"):
-            driver.get(config.base_url)  # 👈 使用 config.base_url
+            driver.get(config.base_url)
             allure.attach(
                 driver.get_screenshot_as_png(),
                 name=f"首页截图_{keyword}",
@@ -53,20 +52,12 @@ class TestBaiduSearch:
                 name=f"搜索截图_{keyword}",
                 attachment_type=allure.attachment_type.PNG
             )
-            logger.info(f"✅ 已输入搜索词: {keyword}")
+            logger.info(f"✅ 已搜索: {keyword}")
 
-        # ===== Step 3: 验证结果 =====
+        # ===== Step 3: 验证结果（使用页面对象的验证方法） =====
         with allure.step(f"3. 验证搜索结果"):
-            # 等待搜索结果加载
-            driver.implicitly_wait(3)
-
-            # 获取页面标题
-            actual_title = driver.title
-            logger.info(f"📄 页面标题: {actual_title}")
-
-            # 验证标题包含关键词
-            assert keyword in actual_title, \
-                f"标题中不包含关键词 '{keyword}'，实际标题: {actual_title}"
+            # 👇 调用页面对象的 verify_result 方法
+            page.verify_result(keyword)
 
             allure.attach(
                 driver.get_screenshot_as_png(),
@@ -81,8 +72,7 @@ class TestBaiduSearch:
                 f"""
                 测试用例: {case.get('title', '未知')}
                 搜索关键词: {keyword}
-                预期结果: 标题包含 '{keyword}'
-                实际标题: {actual_title}
+                实际标题: {driver.title}
                 执行结果: ✅ 通过
                 """,
                 name=f"测试日志_{keyword}",
