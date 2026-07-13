@@ -1,34 +1,25 @@
+# automation/utils/data_reader.py
 import os
 import yaml
-
-from utils.logger import logger
-
+from pathlib import Path
 
 
-def load_yaml(path):
+def load_yaml(file_path):
+    """
+    加载 YAML 文件
 
+    Args:
+        file_path: 相对于 automation 目录的路径
 
-    base_dir = os.path.dirname(
-        os.path.dirname(__file__)
-    )
+    Returns:
+        解析后的数据
+    """
+    # 获取 automation 目录
+    current_dir = Path(__file__).parent.parent  # automation/
+    full_path = current_dir / file_path
 
+    if not full_path.exists():
+        raise FileNotFoundError(f"数据文件不存在: {full_path}")
 
-    file_path = os.path.join(
-        base_dir,
-        path
-    )
-
-
-    logger.info(
-        f"读取测试数据:{file_path}"
-    )
-
-
-    with open(
-        file_path,
-        "r",
-        encoding="utf-8"
-    ) as f:
-
-
+    with open(full_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)

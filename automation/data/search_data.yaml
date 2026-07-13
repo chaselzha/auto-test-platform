@@ -1,10 +1,12 @@
-- title: 百度搜索pytest
-  keyword: pytest
+# automation/data/search_data.yaml
+- title: "搜索pytest"
+  keyword: "pytest"
+  expected_title: "pytest_百度搜索"
 
+- title: "搜索selenium"
+  keyword: "selenium"
+  expected_title: "selenium_百度搜索"
 
-- title: 百度搜索selenium
-  keyword: selenium
-
-
-- title: 百度搜索python
-  keyword: python
+- title: "搜索python"
+  keyword: "python"
+  expected_title: "python_百度搜索"
