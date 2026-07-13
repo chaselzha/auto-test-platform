@@ -1,324 +1,150 @@
 pipeline {
 
-
     agent any
 
-
-
+    /**********************
+     * 参数化构建
+     **********************/
     parameters {
-
-
         choice(
             name: 'ENV',
             choices: [
-                'test',
                 'dev',
+                'test',
                 'prod'
             ],
-            description: '选择运行环境'
+            description: '请选择运行环境'
         )
-
-
-
-        string(
-            name: 'TEST_CASE',
-            defaultValue: '',
-            description: '指定测试文件，例如 test_baidu.py，不填写则运行全部'
-        )
-
-
-
-        booleanParam(
-            name: 'GENERATE_REPORT',
-            defaultValue: true,
-            description: '是否生成Allure报告'
-        )
-
     }
 
+    /**********************
+     * Pipeline 配置
+     **********************/
+    options {
+        timestamps()
 
+        disableConcurrentBuilds()
 
+        buildDiscarder(
+            logRotator(
+                numToKeepStr: '30',
+                daysToKeepStr: '15'
+            )
+        )
+    }
 
+    /**********************
+     * 环境变量
+     **********************/
     environment {
 
+        PYTHON = "python3"
 
-        PATH="/Users/chasel/Library/Python/3.9/bin:/opt/homebrew/bin:$PATH"
-
+        PIP = "pip3"
 
     }
-
-
-
-
 
     stages {
 
-
-
         stage('环境检查') {
 
-
             steps {
 
-
                 sh '''
+                    echo "========== Python =========="
+                    ${PYTHON} --version
 
-                echo "========== Python版本 =========="
+                    echo "========== Java =========="
+                    java -version
 
-                python3 --version
-
-
-                echo "========== Java版本 =========="
-
-                java -version
-
-
-                echo "========== 当前环境 =========="
-
-                echo ${ENV}
-
-
+                    echo "========== Git =========="
+                    git --version
                 '''
-
-
             }
 
-
         }
-
-
-
-
-
-
-        stage('创建Python虚拟环境') {
-
-
-            steps {
-
-
-                sh '''
-
-
-                echo "创建虚拟环境"
-
-
-                python3 -m venv .venv
-
-
-
-                .venv/bin/python --version
-
-
-
-                '''
-
-
-            }
-
-
-        }
-
-
-
-
-
-
-
 
         stage('安装依赖') {
 
-
             steps {
 
-
                 sh '''
-
-
-                echo "安装Python依赖"
-
-
-
-                .venv/bin/python -m pip install --upgrade pip
-
-
-
-                .venv/bin/python -m pip install -r requirements.txt
-
-
-
+                    ${PIP} install -r requirements.txt
                 '''
-
 
             }
 
-
         }
 
-
-
-
-
-
-
-        stage('执行测试') {
-
+        stage('执行自动化测试') {
 
             steps {
 
-
-                sh '''
-
-
-
-                chmod +x run_test.sh
-
-
-
-
-                ./run_test.sh ${ENV}
-
-
-
-                '''
-
+                sh """
+                    chmod +x run_test.sh
+                    ./run_test.sh ${params.ENV}
+                """
 
             }
 
-
         }
-
-
-
-
-
-
 
         stage('生成Allure报告') {
 
-
-
-            when {
-
-
-                expression {
-
-
-                    return params.GENERATE_REPORT
-
-
-                }
-
-
-            }
-
-
-
-
-
             steps {
 
-
-
                 allure(
-
-
-                    includeProperties: false,
-
-
-                    jdk: '',
-
-
-                    results: [
-
-
-                        [
-
-
-                            path: 'allure-results'
-
-
-                        ]
-
-
-                    ]
-
+                        includeProperties: false,
+                        jdk: '',
+                        results: [[path: 'automation/reports/allure-results']]
                 )
 
-
             }
-
 
         }
 
-
-
-
     }
 
-
-
-
-
-
-
+    /**********************
+     * Post
+     **********************/
     post {
-
-
 
         always {
 
+            echo "========== 自动化测试结束 =========="
 
+            script {
 
-            echo "自动化测试执行完成"
+                currentBuild.description =
+                        "ENV=${params.ENV}"
 
-
+            }
 
             archiveArtifacts(
-
-
-                artifacts: 'allure-results/**',
-
-
-                allowEmptyArchive: true
-
-
+                    artifacts: '''
+automation/logs/**,
+automation/screenshots/**,
+automation/reports/**
+''',
+                    fingerprint: true,
+                    allowEmptyArchive: true
             )
 
-
-
         }
-
-
-
-
 
         success {
 
-
-
             echo "构建成功"
 
-
-
         }
-
-
-
-
 
         failure {
 
-
-
-            echo "构建失败，请查看日志"
-
-
+            echo "构建失败"
 
         }
 
-
     }
-
 
 }

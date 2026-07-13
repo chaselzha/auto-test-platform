@@ -39,6 +39,20 @@
 | Jenkins | CI持续集成 |
 | FastAPI | 测试平台接口 |
 
+## Jenkins CI
+
+项目支持 Jenkins 自动持续集成。
+
+功能：
+
+- GitHub Webhook 自动触发
+- 参数化构建
+- 自动安装依赖
+- 自动执行 Pytest
+- 自动生成 Allure 报告
+- 自动保存测试日志
+- 自动保存截图
+- 自动清理历史构建
 
 
 ---

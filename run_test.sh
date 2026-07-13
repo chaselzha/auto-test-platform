@@ -1,26 +1,27 @@
 #!/bin/bash
 
+ENV=$1
 
-ENV=${1:-test}
+if [ -z "$ENV" ]; then
+    ENV=test
+fi
 
+echo "=============================="
+echo "当前运行环境：$ENV"
+echo "=============================="
 
-echo "===================="
+# pytest 所在目录
+export PATH=$HOME/Library/Python/3.9/bin:$PATH
 
-echo "当前环境:$ENV"
+mkdir -p automation/reports/allure-results
+mkdir -p automation/logs
+mkdir -p automation/screenshots
 
-echo "===================="
+pytest automation/tests \
+    --env=$ENV \
+    -vs \
+    --alluredir=automation/reports/allure-results
 
-
-
-.venv/bin/python -m pytest \
-automation/tests \
---env=$ENV \
---alluredir=allure-results
-
-
-
-echo "===================="
-
+echo "=============================="
 echo "测试完成"
-
-echo "===================="
+echo "=============================="

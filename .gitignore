@@ -1,65 +1,19 @@
-# =====================
-# Python
-# =====================
-
-.venv/
+.idea/
 
 __pycache__/
 
-*.py[cod]
+*.pyc
 
-*.pyo
+automation/logs/
 
+automation/screenshots/
 
+automation/reports/allure-results/
 
-# =====================
-# IDE
-# =====================
+automation/reports/allure-report/
 
-.idea/
-
-.vscode/
-
-
-
-# =====================
-# pytest
-# =====================
+reports/
 
 .pytest_cache/
-
-
-
-# =====================
-# Allure
-# =====================
-
-allure-results/
-
-allure-report/
-
-
-
-# =====================
-# 日志
-# =====================
-
-logs/
-
-*.log
-
-
-
-# =====================
-# 截图
-# =====================
-
-screenshots/
-
-
-
-# =====================
-# 系统文件
-# =====================
 
 .DS_Store
