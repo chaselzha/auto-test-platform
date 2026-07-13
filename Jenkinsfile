@@ -71,105 +71,102 @@ pipeline {
          * Checkout Source Code
          ************************************************/
         stage('Checkout') {
-            steps {
-                cleanWs()
+    steps {
+        cleanWs()
 
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: '*/main']],
-                    userRemoteConfigs: [[
-                        url: 'git@github.com:chaselzha/auto-test-platform.git',
-                        credentialsId: 'github-ssh-key'
-                    ]],
-                    extensions: [
-                        [$class: 'CleanCheckout'],
-                        [$class: 'CloneOption',
-                            depth: 0,
-                            noTags: false,
-                            reference: '',
-                            shallow: false,
-                            timeout: 10
-                        ],
-                        [$class: 'PruneStaleBranch'],
-                        [$class: 'LocalBranch', localBranch: 'main']
-                    ]
-                ])
+        checkout([
+            $class: 'GitSCM',
+            branches: [[name: '*/main']],
+            userRemoteConfigs: [[
+                url: 'git@github.com:chaselzha/auto-test-platform.git',
+                credentialsId: 'github-ssh-key'
+            ]],
+            extensions: [
+                [$class: 'CleanCheckout'],
+                [$class: 'CloneOption',
+                    depth: 0,
+                    noTags: false,
+                    reference: '',
+                    shallow: false,
+                    timeout: 10
+                ],
+                [$class: 'PruneStaleBranch'],
+                [$class: 'LocalBranch', localBranch: 'main']
+            ]
+        ])
 
-                script {
-                    env.BUILD_START_TIME = new Date().format(
-                            "yyyy-MM-dd HH:mm:ss",
-                            TimeZone.getTimeZone("Asia/Shanghai")
-                    )
+        script {
+            env.BUILD_START_TIME = new Date().format(
+                    "yyyy-MM-dd HH:mm:ss",
+                    TimeZone.getTimeZone("Asia/Shanghai")
+            )
 
-                    // ===== 获取 Git 信息 =====
-                    def gitBranch = sh(
-                            script: "git rev-parse --abbrev-ref HEAD",
-                            returnStdout: true
-                    ).trim()
+            // ===== 获取 Git 信息 =====
+            def gitBranch = sh(
+                    script: "git rev-parse --abbrev-ref HEAD",
+                    returnStdout: true
+            ).trim()
 
-                    def gitCommit = sh(
-                            script: "git rev-parse --short HEAD",
-                            returnStdout: true
-                    ).trim()
+            def gitCommit = sh(
+                    script: "git rev-parse --short HEAD",
+                    returnStdout: true
+            ).trim()
 
-                    def gitMsg = sh(
-                            script: "git log -1 --pretty=%s",
-                            returnStdout: true
-                    ).trim()
+            def gitMsg = sh(
+                    script: "git log -1 --pretty=%s",
+                    returnStdout: true
+            ).trim()
 
-                    def gitAuthor = sh(
-                            script: "git log -1 --pretty=%an",
-                            returnStdout: true
-                    ).trim()
+            def gitAuthor = sh(
+                    script: "git log -1 --pretty=%an",
+                    returnStdout: true
+            ).trim()
 
-                    // 设置环境变量
-                    env.GIT_BRANCH_NAME = gitBranch
-                    env.GIT_COMMIT_ID = gitCommit
-                    env.GIT_COMMIT_MSG = gitMsg
-                    env.GIT_AUTHOR = gitAuthor
+            // 设置环境变量
+            env.GIT_BRANCH_NAME = gitBranch
+            env.GIT_COMMIT_ID = gitCommit
+            env.GIT_COMMIT_MSG = gitMsg
+            env.GIT_AUTHOR = gitAuthor
 
-                    // ===== 保存 Git 信息到文件 =====
-                    sh """
-                        mkdir -p .git-info
-                        echo "${gitBranch}" > .git-info/branch
-                        echo "${gitCommit}" > .git-info/commit
-                        echo "${gitMsg}" > .git-info/message
-                        echo "${gitAuthor}" > .git-info/author
-                        echo "Git info saved to .git-info/"
-                    """
+            // ===== 保存 Git 信息到文件（使用 writeFile 避免 shell 转义问题） =====
+            writeFile(file: '.git-info/branch', text: gitBranch)
+            writeFile(file: '.git-info/commit', text: gitCommit)
+            writeFile(file: '.git-info/message', text: gitMsg)
+            writeFile(file: '.git-info/author', text: gitAuthor)
+            echo "Git info saved to .git-info/"
 
-                    // ===== 为邮件通知准备的变量 =====
-                    env.ALLURE_REPORT_URL = "${env.BUILD_URL}allure/"
-                    env.BUILD_STATUS = "RUNNING"
-                    env.BUILD_DURATION = "Calculating..."
+            // ===== 为邮件通知准备的变量 =====
+            env.ALLURE_REPORT_URL = "${env.BUILD_URL}allure/"
+            env.BUILD_STATUS = "RUNNING"
+            env.BUILD_DURATION = "Calculating..."
 
-                    // ===== 验证 ci 目录和文件 =====
-                    sh '''
-                        echo "========================================="
-                        echo "Checking ci directory contents"
-                        echo "========================================="
-                        pwd
-                        echo ""
-                        echo "Listing all files in workspace:"
-                        ls -la
-                        echo ""
-                        if [ -d "ci" ]; then
-                            echo "✅ ci directory exists"
-                            ls -la ci/
-                            echo ""
-                            if [ -f "ci/email-success.html" ] && [ -f "ci/email-failure.html" ]; then
-                                echo "✅ Both email templates found!"
-                                echo "✅ email-success.html exists"
-                                echo "✅ email-failure.html exists"
-                            else
-                                echo "⚠️ Some template files are missing"
-                            fi
-                        else
-                            echo "❌ ci directory NOT found!"
-                        fi
-                    '''
+            // ===== 验证 ci 目录和文件 =====
+            sh '''
+                echo "========================================="
+                echo "Checking ci directory contents"
+                echo "========================================="
+                pwd
+                echo ""
+                echo "Listing all files in workspace:"
+                ls -la
+                echo ""
+                if [ -d "ci" ]; then
+                    echo "✅ ci directory exists"
+                    ls -la ci/
+                    echo ""
+                    if [ -f "ci/email-success.html" ] && [ -f "ci/email-failure.html" ]; then
+                        echo "✅ Both email templates found!"
+                        echo "✅ email-success.html exists"
+                        echo "✅ email-failure.html exists"
+                    else
+                        echo "⚠️ Some template files are missing"
+                    fi
+                else
+                    echo "❌ ci directory NOT found!"
+                fi
+            '''
 
-                    echo """
+            echo """
 ==============================
 Git Information (from Checkout)
 
@@ -180,9 +177,9 @@ Message: ${env.GIT_COMMIT_MSG}
 Allure: ${env.ALLURE_REPORT_URL}
 ==============================
 """
-                }
-            }
         }
+    }
+}
 
         /************************************************
          * Environment Check
