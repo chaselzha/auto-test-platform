@@ -1,10 +1,17 @@
 # api/services/task_manager.py
 import json
 import uuid
+import sys
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
-from utils.logger import logger
+
+# 添加项目根目录到系统路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+# 现在可以从 automation.utils 导入
+from automation.utils.logger import logger
 from api.models.schemas import TaskInfo, TestStatus
 
 
@@ -39,7 +46,7 @@ class TaskManager:
         task_id = str(uuid.uuid4())[:8]
         self.tasks[task_id] = {
             "task_id": task_id,
-            "status": TestStatus.PENDING.value,
+            "status": "pending",
             "env": env,
             "browser": browser,
             "start_time": datetime.now().isoformat(),
@@ -94,10 +101,10 @@ class TaskManager:
         if total == 0:
             return {"total": 0, "success": 0, "failed": 0, "pending": 0, "running": 0}
 
-        success = sum(1 for t in tasks if t["status"] == TestStatus.SUCCESS.value)
-        failed = sum(1 for t in tasks if t["status"] == TestStatus.FAILED.value)
-        pending = sum(1 for t in tasks if t["status"] == TestStatus.PENDING.value)
-        running = sum(1 for t in tasks if t["status"] == TestStatus.RUNNING.value)
+        success = sum(1 for t in tasks if t["status"] == "success")
+        failed = sum(1 for t in tasks if t["status"] == "failed")
+        pending = sum(1 for t in tasks if t["status"] == "pending")
+        running = sum(1 for t in tasks if t["status"] == "running")
 
         return {
             "total": total,

@@ -3,8 +3,9 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from pathlib import Path
 import json
+import re
+from datetime import datetime
 from api.services.task_manager import task_manager
-from api.models.schemas import ReportSummary
 
 router = APIRouter()
 
@@ -42,7 +43,6 @@ async def get_report_summary(task_id: str):
     failed = 0
     skipped = 0
 
-    import re
     # 匹配 "X passed, Y failed, Z warnings"
     match = re.search(r"(\d+)\s+passed.*?(\d+)\s+failed", stdout)
     if match:

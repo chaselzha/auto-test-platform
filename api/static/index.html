@@ -1,413 +1,63 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>自动化测试平台</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-            background: #f0f2f5;
-            color: #333;
-            min-height: 100vh;
-        }
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px 40px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        .header h1 {
-            font-size: 24px;
-            font-weight: 700;
-        }
-        .header .subtitle {
-            opacity: 0.8;
-            font-size: 14px;
-        }
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-        .stat-card {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            text-align: center;
-        }
-        .stat-card .number {
-            font-size: 32px;
-            font-weight: 700;
-        }
-        .stat-card .label {
-            font-size: 14px;
-            color: #888;
-            margin-top: 4px;
-        }
-        .stat-card.success .number { color: #52c41a; }
-        .stat-card.failed .number { color: #ff4d4f; }
-        .stat-card.pending .number { color: #faad14; }
-        .stat-card.total .number { color: #1890ff; }
+# api/main.py
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
+from pathlib import Path
 
-        .card {
-            background: white;
-            border-radius: 12px;
-            padding: 24px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        }
-        .card-title {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
+# 导入路由
+from api.routers import test, report
 
-        .form-group {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            align-items: end;
-        }
-        .form-group label {
-            font-size: 13px;
-            font-weight: 500;
-            color: #555;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        .form-group select, .form-group input {
-            padding: 8px 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
-            min-width: 120px;
-        }
-        .btn {
-            padding: 8px 24px;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        .btn-primary {
-            background: #667eea;
-            color: white;
-        }
-        .btn-primary:hover { background: #5a6fd6; transform: translateY(-1px); }
-        .btn-danger { background: #ff4d4f; color: white; }
-        .btn-danger:hover { background: #e04345; }
-        .btn-success { background: #52c41a; color: white; }
-        .btn-success:hover { background: #45a818; }
+# 创建 FastAPI 应用
+app = FastAPI(
+    title="自动化测试平台 API",
+    description="基于 Pytest + Selenium 的自动化测试平台",
+    version="2.0.0"
+)
 
-        .task-list {
-            overflow-x: auto;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 14px;
-        }
-        th, td {
-            padding: 12px 16px;
-            text-align: left;
-            border-bottom: 1px solid #f0f0f0;
-        }
-        th {
-            background: #fafafa;
-            font-weight: 600;
-            color: #555;
-        }
-        tr:hover { background: #fafafa; }
+# CORS 配置
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-        .status-badge {
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 500;
-            display: inline-block;
-        }
-        .status-badge.success { background: #f6ffed; color: #52c41a; }
-        .status-badge.failed { background: #fff2f0; color: #ff4d4f; }
-        .status-badge.pending { background: #fffbe6; color: #faad14; }
-        .status-badge.running { background: #e6f7ff; color: #1890ff; animation: pulse 1.5s infinite; }
+# 注册路由
+app.include_router(test.router, prefix="/api/test", tags=["测试任务"])
+app.include_router(report.router, prefix="/api/report", tags=["测试报告"])
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
 
-        .empty-state {
-            text-align: center;
-            padding: 40px;
-            color: #999;
-        }
-        .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    """根路径 - 返回前端页面"""
+    html_file = Path(__file__).parent / "static" / "index.html"
+    if html_file.exists():
+        with open(html_file, "r", encoding="utf-8") as f:
+            return f.read()
+    return """
+    <html>
+        <head><title>自动化测试平台</title></head>
+        <body>
+            <h1>🚀 自动化测试平台 API</h1>
+            <p>访问 <a href="/docs">/docs</a> 查看 API 文档</p>
+        </body>
+    </html>
+    """
 
-        .loading {
-            display: none;
-            text-align: center;
-            padding: 20px;
-            color: #667eea;
-        }
 
-        .refresh-btn {
-            background: transparent;
-            border: 1px solid #ddd;
-            padding: 4px 12px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 13px;
-        }
-        .refresh-btn:hover { background: #f0f0f0; }
+@app.get("/health")
+async def health_check():
+    """健康检查"""
+    return {"status": "healthy", "message": "自动化测试平台运行正常"}
 
-        @media (max-width: 768px) {
-            .header { padding: 16px 20px; }
-            .header h1 { font-size: 18px; }
-            .form-group { flex-direction: column; align-items: stretch; }
-            .form-group label { min-width: auto; }
-            .stats-grid { grid-template-columns: repeat(2, 1fr); }
-        }
-    </style>
-</head>
-<body>
 
-<div class="header">
-    <div>
-        <h1>🚀 自动化测试平台</h1>
-        <div class="subtitle">基于 Pytest + Selenium + Allure</div>
-    </div>
-    <div>
-        <span style="opacity:0.8;font-size:14px;">API v2.0</span>
-    </div>
-</div>
-
-<div class="container">
-
-    <!-- 统计信息 -->
-    <div class="stats-grid" id="stats">
-        <div class="stat-card total"><div class="number" id="totalCount">-</div><div class="label">总任务</div></div>
-        <div class="stat-card success"><div class="number" id="successCount">-</div><div class="label">成功</div></div>
-        <div class="stat-card failed"><div class="number" id="failedCount">-</div><div class="label">失败</div></div>
-        <div class="stat-card pending"><div class="number" id="pendingCount">-</div><div class="label">等待/运行中</div></div>
-    </div>
-
-    <!-- 执行测试 -->
-    <div class="card">
-        <div class="card-title">🧪 执行测试</div>
-        <form id="testForm" class="form-group">
-            <label>
-                环境
-                <select name="env">
-                    <option value="test">test</option>
-                    <option value="dev">dev</option>
-                    <option value="prod">prod</option>
-                </select>
-            </label>
-            <label>
-                浏览器
-                <select name="browser">
-                    <option value="chrome">Chrome</option>
-                    <option value="firefox">Firefox</option>
-                    <option value="edge">Edge</option>
-                </select>
-            </label>
-            <label>
-                并行数
-                <select name="parallel">
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="4" selected>4</option>
-                    <option value="8">8</option>
-                </select>
-            </label>
-            <label>
-                测试标记
-                <input type="text" name="markers" placeholder="smoke, regression" value="smoke or regression">
-            </label>
-            <label style="flex-direction:row;align-items:center;gap:8px;">
-                <input type="checkbox" name="headless" checked>
-                无头模式
-            </label>
-            <button type="submit" class="btn btn-primary">▶ 执行测试</button>
-        </form>
-        <div id="runMessage" style="margin-top:12px;font-size:14px;color:#666;"></div>
-    </div>
-
-    <!-- 任务列表 -->
-    <div class="card">
-        <div class="card-title" style="justify-content:space-between;">
-            <span>📋 任务列表</span>
-            <button class="refresh-btn" onclick="loadTasks()">🔄 刷新</button>
-        </div>
-        <div class="task-list">
-            <table>
-                <thead>
-                    <tr>
-                        <th>任务ID</th>
-                        <th>状态</th>
-                        <th>环境</th>
-                        <th>浏览器</th>
-                        <th>耗时</th>
-                        <th>开始时间</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody id="taskTableBody">
-                    <tr><td colspan="7" class="empty-state"><div class="icon">📭</div>暂无任务记录</td></tr>
-                </tbody>
-            </table>
-        </div>
-        <div class="loading" id="loading">⏳ 加载中...</div>
-    </div>
-
-</div>
-
-<script>
-    const API_BASE = '/api';
-
-    // 获取状态颜色
-    function getStatusBadge(status) {
-        const map = {
-            'success': 'success',
-            'passed': 'success',
-            'failed': 'failed',
-            'failure': 'failed',
-            'pending': 'pending',
-            'running': 'running'
-        };
-        return `<span class="status-badge ${map[status] || 'pending'}">${status.toUpperCase()}</span>`;
-    }
-
-    // 加载统计信息
-    async function loadStats() {
-        try {
-            const res = await fetch(`${API_BASE}/test/statistics`);
-            const data = await res.json();
-            document.getElementById('totalCount').textContent = data.total || 0;
-            document.getElementById('successCount').textContent = data.success || 0;
-            document.getElementById('failedCount').textContent = data.failed || 0;
-            document.getElementById('pendingCount').textContent = (data.pending || 0) + (data.running || 0);
-        } catch (e) {
-            console.error('加载统计失败:', e);
-        }
-    }
-
-    // 加载任务列表
-    async function loadTasks() {
-        const loading = document.getElementById('loading');
-        loading.style.display = 'block';
-        try {
-            const res = await fetch(`${API_BASE}/test/tasks?limit=20`);
-            const tasks = await res.json();
-            const tbody = document.getElementById('taskTableBody');
-            if (tasks.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" class="empty-state"><div class="icon">📭</div>暂无任务记录</td></tr>`;
-            } else {
-                tbody.innerHTML = tasks.map(task => `
-                    <tr>
-                        <td><code style="background:#f5f5f5;padding:2px 8px;border-radius:4px;font-size:13px;">${task.task_id}</code></td>
-                        <td>${getStatusBadge(task.status)}</td>
-                        <td>${task.env}</td>
-                        <td>${task.browser}</td>
-                        <td>${task.duration ? task.duration.toFixed(2) + 's' : '-'}</td>
-                        <td>${new Date(task.start_time).toLocaleString()}</td>
-                        <td>
-                            <button class="btn btn-success" style="padding:2px 12px;font-size:12px;" onclick="viewReport('${task.task_id}')">📊 报告</button>
-                            <button class="btn btn-danger" style="padding:2px 12px;font-size:12px;" onclick="deleteTask('${task.task_id}')">🗑️</button>
-                        </td>
-                    </tr>
-                `).join('');
-            }
-        } catch (e) {
-            console.error('加载任务失败:', e);
-        }
-        loading.style.display = 'none';
-    }
-
-    // 查看报告
-    function viewReport(taskId) {
-        window.open(`/api/report/${taskId}`, '_blank');
-    }
-
-    // 删除任务
-    async function deleteTask(taskId) {
-        if (!confirm(`确定要删除任务 ${taskId} 吗？`)) return;
-        try {
-            await fetch(`${API_BASE}/test/task/${taskId}`, { method: 'DELETE' });
-            loadTasks();
-            loadStats();
-        } catch (e) {
-            alert('删除失败: ' + e.message);
-        }
-    }
-
-    // 提交测试
-    document.getElementById('testForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const formData = new FormData(e.target);
-        const data = {
-            env: formData.get('env'),
-            browser: formData.get('browser'),
-            parallel: parseInt(formData.get('parallel')) || 1,
-            markers: formData.get('markers') || null,
-            headless: formData.has('headless')
-        };
-
-        const msg = document.getElementById('runMessage');
-        msg.textContent = '⏳ 提交中...';
-        msg.style.color = '#666';
-
-        try {
-            const res = await fetch(`${API_BASE}/test/run`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-            const result = await res.json();
-            msg.textContent = `✅ 任务已提交: ${result.task_id}`;
-            msg.style.color = '#52c41a';
-            loadTasks();
-            loadStats();
-            // 5秒后刷新
-            setTimeout(() => { loadTasks(); loadStats(); }, 5000);
-        } catch (err) {
-            msg.textContent = `❌ 提交失败: ${err.message}`;
-            msg.style.color = '#ff4d4f';
-        }
-    });
-
-    // 自动刷新
-    setInterval(() => {
-        loadTasks();
-        loadStats();
-    }, 10000);
-
-    // 初始加载
-    loadStats();
-    loadTasks();
-</script>
-
-</body>
-</html>
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "api.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True
+    )

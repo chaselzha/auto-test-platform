@@ -5,9 +5,12 @@ import sys
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any
-from utils.logger import logger
+
+# 添加项目根目录到系统路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+from automation.utils.logger import logger
 from api.services.task_manager import task_manager
-from api.models.schemas import TestStatus
 
 
 class TestRunner:
@@ -21,12 +24,9 @@ class TestRunner:
 
     def run(self, task_id: str, env: str, browser: str, headless: bool = True,
             test_path: str = None, parallel: int = 1, markers: str = None):
-        """
-        执行测试
-        """
+        """执行测试"""
         try:
-            # 更新任务状态为运行中
-            task_manager.update_task(task_id, status=TestStatus.RUNNING.value)
+            task_manager.update_task(task_id, status="running")
             start_time = datetime.now()
 
             # 设置环境变量
@@ -67,11 +67,11 @@ class TestRunner:
             duration = (end_time - start_time).total_seconds()
 
             # 更新任务结果
-            status = TestStatus.SUCCESS if result.returncode == 0 else TestStatus.FAILED
+            status = "success" if result.returncode == 0 else "failed"
 
             task_manager.update_task(
                 task_id,
-                status=status.value,
+                status=status,
                 end_time=end_time.isoformat(),
                 duration=duration,
                 exit_code=result.returncode,
@@ -83,13 +83,13 @@ class TestRunner:
                 }
             )
 
-            logger.info(f"✅ 测试完成: task_id={task_id}, status={status.value}, duration={duration:.2f}s")
+            logger.info(f"✅ 测试完成: task_id={task_id}, status={status}, duration={duration:.2f}s")
 
         except Exception as e:
             logger.error(f"❌ 测试执行失败: {e}")
             task_manager.update_task(
                 task_id,
-                status=TestStatus.FAILED.value,
+                status="failed",
                 end_time=datetime.now().isoformat(),
                 result={"error": str(e)}
             )

@@ -25,7 +25,7 @@ class TestRequest(BaseModel):
 class TestResponse(BaseModel):
     """测试执行响应"""
     task_id: str
-    status: TestStatus
+    status: str
     message: str
     env: str
     browser: str
@@ -35,7 +35,7 @@ class TestResponse(BaseModel):
 class TestResult(BaseModel):
     """测试结果"""
     task_id: str
-    status: TestStatus
+    status: str
     exit_code: int
     duration: float
     env: str
@@ -51,19 +51,8 @@ class TestResult(BaseModel):
 class TaskInfo(BaseModel):
     """任务信息"""
     task_id: str
-    status: TestStatus
+    status: str
     env: str
     browser: str
     start_time: datetime
     duration: Optional[float] = None
-
-
-class ReportSummary(BaseModel):
-    """报告摘要"""
-    total: int
-    passed: int
-    failed: int
-    skipped: int
-    duration: float
-    start_time: datetime
-    end_time: datetime

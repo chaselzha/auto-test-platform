@@ -1,19 +1,17 @@
 # api/routers/test.py
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from typing import List, Optional
-from api.models.schemas import TestRequest, TestResponse, TestResult, TaskInfo
+from datetime import datetime
+from api.models.schemas import TestRequest, TestResponse, TaskInfo
 from api.services.task_manager import task_manager
 from api.services.test_runner import test_runner
-from utils.logger import logger
 
 router = APIRouter()
 
 
 @router.post("/run", response_model=TestResponse)
 async def run_test(request: TestRequest, background_tasks: BackgroundTasks):
-    """
-    执行测试
-    """
+    """执行测试"""
     # 创建任务
     task_id = task_manager.create_task(
         env=request.env,
@@ -84,7 +82,3 @@ async def delete_task(task_id: str):
 async def get_statistics():
     """获取统计信息"""
     return task_manager.get_statistics()
-
-
-# 导入 datetime
-from datetime import datetime
