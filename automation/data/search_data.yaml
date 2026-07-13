@@ -1,12 +1,51 @@
 # automation/data/search_data.yaml
+# ===== 基础搜索测试 =====
 - title: "搜索pytest"
   keyword: "pytest"
-  expected_title: "pytest_百度搜索"
+  expected: "pytest"
 
 - title: "搜索selenium"
   keyword: "selenium"
-  expected_title: "selenium_百度搜索"
+  expected: "selenium"
 
 - title: "搜索python"
   keyword: "python"
-  expected_title: "python_百度搜索"
+  expected: "python"
+
+# ===== 新增：更多搜索场景 =====
+- title: "搜索自动化测试"
+  keyword: "自动化测试"
+  expected: "自动化测试"
+
+- title: "搜索Jenkins"
+  keyword: "Jenkins"
+  expected: "Jenkins"
+
+- title: "搜索Docker"
+  keyword: "Docker"
+  expected: "Docker"
+
+- title: "搜索AI"
+  keyword: "人工智能"
+  expected: "人工智能"
+
+- title: "搜索GitHub"
+  keyword: "GitHub"
+  expected: "GitHub"
+
+# ===== 边界测试 =====
+- title: "搜索空关键词"
+  keyword: ""
+  expected: ""
+
+- title: "搜索特殊字符"
+  keyword: "!@#$%"
+  expected: "!@#$%"
+
+- title: "搜索数字"
+  keyword: "123456"
+  expected: "123456"
+
+- title: "搜索中英混合"
+  keyword: "Python 自动化 测试"
+  expected: "Python"
