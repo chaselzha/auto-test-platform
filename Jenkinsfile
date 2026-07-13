@@ -49,13 +49,6 @@ pipeline {
     environment {
 
         ALLURE_HOME = tool 'allure'
-
-        // Git 信息环境变量
-        GIT_BRANCH_NAME = ''
-        GIT_COMMIT_ID = ''
-        GIT_COMMIT_MSG = ''
-        GIT_AUTHOR = ''
-
         BUILD_STATUS = ''
         BUILD_DURATION = ''
         BUILD_START_TIME = ''
@@ -101,7 +94,7 @@ pipeline {
                             TimeZone.getTimeZone("Asia/Shanghai")
                     )
 
-                    // ===== 获取 Git 信息并保存到环境变量 =====
+                    // ===== 获取 Git 信息 =====
                     def gitBranch = sh(
                             script: "git rev-parse --abbrev-ref HEAD",
                             returnStdout: true
@@ -122,20 +115,31 @@ pipeline {
                             returnStdout: true
                     ).trim()
 
-                    // 设置环境变量
+                    // ===== 保存到 currentBuild 全局属性 =====
+                    currentBuild.setDescription("Branch: ${gitBranch}, Commit: ${gitCommit}")
+
+                    // 使用 rawBuild 保存自定义属性
+                    def build = currentBuild.rawBuild
+                    build.addAction(new org.jenkinsci.plugins.workflow.cps.EnvActionImpl([
+                        'GIT_BRANCH': gitBranch,
+                        'GIT_COMMIT': gitCommit,
+                        'GIT_MESSAGE': gitMsg,
+                        'GIT_AUTHOR': gitAuthor
+                    ]))
+
+                    // 同时设置环境变量
                     env.GIT_BRANCH_NAME = gitBranch
                     env.GIT_COMMIT_ID = gitCommit
                     env.GIT_COMMIT_MSG = gitMsg
                     env.GIT_AUTHOR = gitAuthor
 
-                    // ===== 保存 Git 信息到文件（供 post 阶段使用） =====
+                    // ===== 保存到文件（备用） =====
                     sh """
                         mkdir -p .git-info
                         echo "${gitBranch}" > .git-info/branch
                         echo "${gitCommit}" > .git-info/commit
                         echo "${gitMsg}" > .git-info/message
                         echo "${gitAuthor}" > .git-info/author
-                        echo "Git info saved to .git-info/"
                     """
 
                     // ===== 为邮件通知准备的变量 =====
@@ -143,35 +147,23 @@ pipeline {
                     env.BUILD_STATUS = "RUNNING"
                     env.BUILD_DURATION = "Calculating..."
 
-                    // ===== 验证 ci 目录和文件 =====
+                    // ===== 验证 =====
                     sh '''
                         echo "========================================="
-                        echo "Checking ci directory contents"
+                        echo "Git Information Saved"
                         echo "========================================="
-                        pwd
+                        echo "Branch: $(cat .git-info/branch 2>/dev/null || echo 'N/A')"
+                        echo "Commit: $(cat .git-info/commit 2>/dev/null || echo 'N/A')"
+                        echo "Message: $(cat .git-info/message 2>/dev/null || echo 'N/A')"
+                        echo "Author: $(cat .git-info/author 2>/dev/null || echo 'N/A')"
                         echo ""
-                        echo "Listing all files in workspace:"
-                        ls -la
-                        echo ""
-                        if [ -d "ci" ]; then
-                            echo "✅ ci directory exists"
-                            ls -la ci/
-                            echo ""
-                            if [ -f "ci/email-success.html" ] && [ -f "ci/email-failure.html" ]; then
-                                echo "✅ Both email templates found!"
-                                echo "✅ email-success.html exists"
-                                echo "✅ email-failure.html exists"
-                            else
-                                echo "⚠️ Some template files are missing"
-                            fi
-                        else
-                            echo "❌ ci directory NOT found!"
-                        fi
+                        echo "Checking ci directory:"
+                        ls -la ci/ 2>/dev/null || echo "ci/ not found"
                     '''
 
                     echo """
 ==============================
-Git Information (from Checkout)
+Git Information
 
 Branch : ${env.GIT_BRANCH_NAME}
 Commit : ${env.GIT_COMMIT_ID}
@@ -360,267 +352,293 @@ Allure: ${env.ALLURE_REPORT_URL}
     }
 
     /************************************************
-     * Post Actions
+     * Post Actions - 使用 Groovy 变量持久化
      ************************************************/
     post {
 
-        success {
+    success {
 
-            script {
+        script {
 
-                // ===== 从文件读取 Git 信息 =====
-                def gitBranch = "unknown"
-                def gitCommit = "unknown"
-                def gitMessage = "unknown"
-                def gitAuthor = "unknown"
+            // ===== 从文件读取 Git 信息（在 cleanWs 之前） =====
+            def gitBranch = "unknown"
+            def gitCommit = "unknown"
+            def gitMessage = "unknown"
+            def gitAuthor = "unknown"
 
-                try {
-                    gitBranch = readFile(".git-info/branch").trim()
-                    gitCommit = readFile(".git-info/commit").trim()
-                    gitMessage = readFile(".git-info/message").trim()
-                    gitAuthor = readFile(".git-info/author").trim()
-                    echo "✅ Loaded Git info from .git-info/"
-                } catch (Exception e) {
-                    echo "⚠️ Could not read Git info from .git-info/, using environment variables"
-                    gitBranch = env.GIT_BRANCH_NAME ?: "unknown"
-                    gitCommit = env.GIT_COMMIT_ID ?: "unknown"
-                    gitMessage = env.GIT_COMMIT_MSG ?: "unknown"
-                    gitAuthor = env.GIT_AUTHOR ?: "unknown"
-                }
+            // 从文件读取
+            try {
+                gitBranch = readFile(".git-info/branch").trim()
+                gitCommit = readFile(".git-info/commit").trim()
+                gitMessage = readFile(".git-info/message").trim()
+                gitAuthor = readFile(".git-info/author").trim()
+                echo "✅ Loaded Git info from .git-info/ files"
+                echo "   Branch: ${gitBranch}"
+                echo "   Commit: ${gitCommit}"
+            } catch (Exception e) {
+                echo "⚠️ Could not read from .git-info/ files"
 
-                // 在 post 阶段设置这些变量
-                def buildStatus = "SUCCESS"
-                def buildDuration = currentBuild.durationString.replace(" and counting", "")
-                def buildTimestamp = new Date().format(
-                        "yyyy-MM-dd HH:mm:ss",
-                        TimeZone.getTimeZone("Asia/Shanghai")
-                )
-
-                def jobName = env.JOB_NAME
-                def buildNumber = env.BUILD_NUMBER
-                def testEnv = params.ENV
-                def buildUrl = env.BUILD_URL
-                def allureUrl = env.ALLURE_REPORT_URL ?: "N/A"
-
-                // 尝试读取文件，如果不存在则使用内联 HTML
-                def html
-                try {
-                    if (fileExists("ci/email-success.html")) {
-                        html = readFile("ci/email-success.html")
-                        echo "✅ Loaded email template from ci/email-success.html"
-                    } else {
-                        throw new Exception("File not found")
-                    }
-
-                    // 替换文件中的占位符
-                    html = html
-                            .replace('${JOB_NAME}', jobName)
-                            .replace('${BUILD_NUMBER}', buildNumber)
-                            .replace('${ENV}', testEnv)
-                            .replace('${BUILD_STATUS}', buildStatus)
-                            .replace('${BUILD_DURATION}', buildDuration)
-                            .replace('${GIT_BRANCH}', gitBranch)
-                            .replace('${GIT_COMMIT}', gitCommit)
-                            .replace('${GIT_MESSAGE}', gitMessage)
-                            .replace('${GIT_AUTHOR}', gitAuthor)
-                            .replace('${BUILD_URL}', buildUrl)
-                            .replace('${ALLURE_URL}', allureUrl)
-                            .replace('${BUILD_TIMESTAMP}', buildTimestamp)
-                } catch (Exception e) {
-                    echo "⚠️ ci/email-success.html not found, using inline template"
-                    html = """
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="UTF-8">
-                        <style>
-                            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                            .header { background: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px; }
-                            .content { padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px; }
-                            .detail { margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #4CAF50; }
-                            .label { font-weight: bold; color: #555; }
-                            .footer { margin-top: 20px; text-align: center; color: #666; font-size: 12px; }
-                            a { color: #4CAF50; text-decoration: none; }
-                            a:hover { text-decoration: underline; }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="container">
-                            <div class="header"><h2>✅ 自动化测试构建成功</h2></div>
-                            <div class="content">
-                                <h3>📋 构建信息</h3>
-                                <div class="detail"><span class="label">项目名称：</span> ${jobName}</div>
-                                <div class="detail"><span class="label">构建编号：</span> #${buildNumber}</div>
-                                <div class="detail"><span class="label">测试环境：</span> ${testEnv}</div>
-                                <div class="detail"><span class="label">构建状态：</span> ✅ ${buildStatus}</div>
-                                <div class="detail"><span class="label">构建耗时：</span> ${buildDuration}</div>
-                                <div class="detail"><span class="label">构建时间：</span> ${buildTimestamp}</div>
-                                <h3>📝 Git 信息</h3>
-                                <div class="detail"><span class="label">分支：</span> ${gitBranch}</div>
-                                <div class="detail"><span class="label">提交 ID：</span> ${gitCommit}</div>
-                                <div class="detail"><span class="label">提交信息：</span> ${gitMessage}</div>
-                                <div class="detail"><span class="label">提交作者：</span> ${gitAuthor}</div>
-                                <h3>🔗 报告链接</h3>
-                                <div class="detail"><span class="label">Allure 测试报告：</span> <a href="${allureUrl}">${allureUrl}</a></div>
-                                <div class="detail"><span class="label">Jenkins 构建：</span> <a href="${buildUrl}">${buildUrl}</a></div>
-                            </div>
-                            <div class="footer"><p>此邮件由 Jenkins 自动发送，请勿回复。</p></div>
-                        </div>
-                    </body>
-                    </html>
-                    """
-                }
-
-                emailext(
-                        to: params.EMAIL_TO,
-                        mimeType: 'text/html',
-                        subject: "✅ ${jobName} #${buildNumber} Build Success",
-                        body: html
-                )
-
-                echo "📧 Success email sent to ${params.EMAIL_TO}"
-                echo "   Git Branch: ${gitBranch}"
-                echo "   Git Commit: ${gitCommit}"
-
+                // 降级：从环境变量读取
+                gitBranch = env.GIT_BRANCH_NAME ?: "unknown"
+                gitCommit = env.GIT_COMMIT_ID ?: "unknown"
+                gitMessage = env.GIT_COMMIT_MSG ?: "unknown"
+                gitAuthor = env.GIT_AUTHOR ?: "unknown"
+                echo "⚠️ Using environment variables for Git info"
             }
 
-        }
+            // 打印最终使用的 Git 信息
+            echo """
+=========================================
+Git Info for Email
+=========================================
+Branch : ${gitBranch}
+Commit : ${gitCommit}
+Author : ${gitAuthor}
+Message: ${gitMessage}
+=========================================
+"""
 
-        failure {
+            def buildStatus = "SUCCESS"
+            def buildDuration = currentBuild.durationString.replace(" and counting", "")
+            def buildTimestamp = new Date().format(
+                    "yyyy-MM-dd HH:mm:ss",
+                    TimeZone.getTimeZone("Asia/Shanghai")
+            )
 
-            script {
+            def jobName = env.JOB_NAME
+            def buildNumber = env.BUILD_NUMBER
+            def testEnv = params.ENV
+            def buildUrl = env.BUILD_URL
+            def allureUrl = env.ALLURE_REPORT_URL ?: "N/A"
 
-                // ===== 从文件读取 Git 信息 =====
-                def gitBranch = "unknown"
-                def gitCommit = "unknown"
-                def gitMessage = "unknown"
-                def gitAuthor = "unknown"
-
-                try {
-                    gitBranch = readFile(".git-info/branch").trim()
-                    gitCommit = readFile(".git-info/commit").trim()
-                    gitMessage = readFile(".git-info/message").trim()
-                    gitAuthor = readFile(".git-info/author").trim()
-                    echo "✅ Loaded Git info from .git-info/"
-                } catch (Exception e) {
-                    echo "⚠️ Could not read Git info from .git-info/, using environment variables"
-                    gitBranch = env.GIT_BRANCH_NAME ?: "unknown"
-                    gitCommit = env.GIT_COMMIT_ID ?: "unknown"
-                    gitMessage = env.GIT_COMMIT_MSG ?: "unknown"
-                    gitAuthor = env.GIT_AUTHOR ?: "unknown"
+            // 尝试从 ci 目录读取模板
+            def html
+            try {
+                if (fileExists("ci/email-success.html")) {
+                    html = readFile("ci/email-success.html")
+                    echo "✅ Loaded email template from ci/email-success.html"
+                } else {
+                    throw new Exception("File not found")
                 }
 
-                // 在 post 阶段设置这些变量
-                def buildStatus = "FAILURE"
-                def buildDuration = currentBuild.durationString.replace(" and counting", "")
-                def buildTimestamp = new Date().format(
-                        "yyyy-MM-dd HH:mm:ss",
-                        TimeZone.getTimeZone("Asia/Shanghai")
-                )
-
-                def jobName = env.JOB_NAME
-                def buildNumber = env.BUILD_NUMBER
-                def testEnv = params.ENV
-                def buildUrl = env.BUILD_URL
-                def allureUrl = env.ALLURE_REPORT_URL ?: "N/A"
-
-                // 尝试读取文件，如果不存在则使用内联 HTML
-                def html
-                try {
-                    if (fileExists("ci/email-failure.html")) {
-                        html = readFile("ci/email-failure.html")
-                        echo "✅ Loaded email template from ci/email-failure.html"
-                    } else {
-                        throw new Exception("File not found")
-                    }
-
-                    html = html
-                            .replace('${JOB_NAME}', jobName)
-                            .replace('${BUILD_NUMBER}', buildNumber)
-                            .replace('${ENV}', testEnv)
-                            .replace('${BUILD_STATUS}', buildStatus)
-                            .replace('${BUILD_DURATION}', buildDuration)
-                            .replace('${GIT_BRANCH}', gitBranch)
-                            .replace('${GIT_COMMIT}', gitCommit)
-                            .replace('${GIT_MESSAGE}', gitMessage)
-                            .replace('${GIT_AUTHOR}', gitAuthor)
-                            .replace('${BUILD_URL}', buildUrl)
-                            .replace('${ALLURE_URL}', allureUrl)
-                            .replace('${BUILD_TIMESTAMP}', buildTimestamp)
-                } catch (Exception e) {
-                    echo "⚠️ ci/email-failure.html not found, using inline template"
-                    html = """
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="UTF-8">
-                        <style>
-                            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                            .header { background: #f44336; color: white; padding: 20px; text-align: center; border-radius: 5px; }
-                            .content { padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px; }
-                            .detail { margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #f44336; }
-                            .error-box { background: #fff3f3; border: 1px solid #f44336; padding: 15px; border-radius: 5px; margin: 15px 0; }
-                            .label { font-weight: bold; color: #555; }
-                            .footer { margin-top: 20px; text-align: center; color: #666; font-size: 12px; }
-                            a { color: #f44336; text-decoration: none; }
-                            a:hover { text-decoration: underline; }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="container">
-                            <div class="header"><h2>❌ 自动化测试构建失败</h2></div>
-                            <div class="content">
-                                <div class="error-box"><strong>⚠️ 构建失败，请及时检查！</strong></div>
-                                <h3>📋 构建信息</h3>
-                                <div class="detail"><span class="label">项目名称：</span> ${jobName}</div>
-                                <div class="detail"><span class="label">构建编号：</span> #${buildNumber}</div>
-                                <div class="detail"><span class="label">测试环境：</span> ${testEnv}</div>
-                                <div class="detail"><span class="label">构建状态：</span> ❌ ${buildStatus}</div>
-                                <div class="detail"><span class="label">构建耗时：</span> ${buildDuration}</div>
-                                <div class="detail"><span class="label">构建时间：</span> ${buildTimestamp}</div>
-                                <h3>📝 Git 信息</h3>
-                                <div class="detail"><span class="label">分支：</span> ${gitBranch}</div>
-                                <div class="detail"><span class="label">提交 ID：</span> ${gitCommit}</div>
-                                <div class="detail"><span class="label">提交信息：</span> ${gitMessage}</div>
-                                <div class="detail"><span class="label">提交作者：</span> ${gitAuthor}</div>
-                                <h3>🔗 报告链接</h3>
-                                <div class="detail"><span class="label">Allure 测试报告：</span> <a href="${allureUrl}">${allureUrl}</a></div>
-                                <div class="detail"><span class="label">Jenkins 构建：</span> <a href="${buildUrl}">${buildUrl}</a></div>
-                            </div>
-                            <div class="footer"><p>此邮件由 Jenkins 自动发送，请勿回复。</p></div>
+                html = html
+                        .replace('${JOB_NAME}', jobName)
+                        .replace('${BUILD_NUMBER}', buildNumber)
+                        .replace('${ENV}', testEnv)
+                        .replace('${BUILD_STATUS}', buildStatus)
+                        .replace('${BUILD_DURATION}', buildDuration)
+                        .replace('${GIT_BRANCH}', gitBranch)
+                        .replace('${GIT_COMMIT}', gitCommit)
+                        .replace('${GIT_MESSAGE}', gitMessage)
+                        .replace('${GIT_AUTHOR}', gitAuthor)
+                        .replace('${BUILD_URL}', buildUrl)
+                        .replace('${ALLURE_URL}', allureUrl)
+                        .replace('${BUILD_TIMESTAMP}', buildTimestamp)
+            } catch (Exception e) {
+                echo "⚠️ ci/email-success.html not found, using inline template"
+                html = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <style>
+                        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                        .header { background: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px; }
+                        .content { padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px; }
+                        .detail { margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #4CAF50; }
+                        .label { font-weight: bold; color: #555; }
+                        .footer { margin-top: 20px; text-align: center; color: #666; font-size: 12px; }
+                        a { color: #4CAF50; text-decoration: none; }
+                        a:hover { text-decoration: underline; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header"><h2>✅ 自动化测试构建成功</h2></div>
+                        <div class="content">
+                            <h3>📋 构建信息</h3>
+                            <div class="detail"><span class="label">项目名称：</span> ${jobName}</div>
+                            <div class="detail"><span class="label">构建编号：</span> #${buildNumber}</div>
+                            <div class="detail"><span class="label">测试环境：</span> ${testEnv}</div>
+                            <div class="detail"><span class="label">构建状态：</span> ✅ ${buildStatus}</div>
+                            <div class="detail"><span class="label">构建耗时：</span> ${buildDuration}</div>
+                            <div class="detail"><span class="label">构建时间：</span> ${buildTimestamp}</div>
+                            <h3>📝 Git 信息</h3>
+                            <div class="detail"><span class="label">分支：</span> ${gitBranch}</div>
+                            <div class="detail"><span class="label">提交 ID：</span> ${gitCommit}</div>
+                            <div class="detail"><span class="label">提交信息：</span> ${gitMessage}</div>
+                            <div class="detail"><span class="label">提交作者：</span> ${gitAuthor}</div>
+                            <h3>🔗 报告链接</h3>
+                            <div class="detail"><span class="label">Allure 测试报告：</span> <a href="${allureUrl}">${allureUrl}</a></div>
+                            <div class="detail"><span class="label">Jenkins 构建：</span> <a href="${buildUrl}">${buildUrl}</a></div>
                         </div>
-                    </body>
-                    </html>
-                    """
-                }
-
-                emailext(
-                        to: params.EMAIL_TO,
-                        mimeType: 'text/html',
-                        subject: "❌ ${jobName} #${buildNumber} Build Failed",
-                        body: html
-                )
-
-                echo "📧 Failure email sent to ${params.EMAIL_TO}"
-                echo "   Git Branch: ${gitBranch}"
-                echo "   Git Commit: ${gitCommit}"
-
+                        <div class="footer"><p>此邮件由 Jenkins 自动发送，请勿回复。</p></div>
+                    </div>
+                </body>
+                </html>
+                """
             }
 
-        }
+            emailext(
+                    to: params.EMAIL_TO,
+                    mimeType: 'text/html',
+                    subject: "✅ ${jobName} #${buildNumber} Build Success",
+                    body: html
+            )
 
-        always {
-
-            echo "========================================="
-            echo "Build Finished."
-            echo "========================================="
-
-            cleanWs()
+            echo "📧 Success email sent to ${params.EMAIL_TO}"
+            echo "   Git Branch: ${gitBranch}"
+            echo "   Git Commit: ${gitCommit}"
 
         }
 
     }
+
+    failure {
+
+        script {
+
+            // ===== 从文件读取 Git 信息（在 cleanWs 之前） =====
+            def gitBranch = "unknown"
+            def gitCommit = "unknown"
+            def gitMessage = "unknown"
+            def gitAuthor = "unknown"
+
+            try {
+                gitBranch = readFile(".git-info/branch").trim()
+                gitCommit = readFile(".git-info/commit").trim()
+                gitMessage = readFile(".git-info/message").trim()
+                gitAuthor = readFile(".git-info/author").trim()
+                echo "✅ Loaded Git info from .git-info/ files"
+            } catch (Exception e) {
+                echo "⚠️ Could not read from .git-info/ files"
+                gitBranch = env.GIT_BRANCH_NAME ?: "unknown"
+                gitCommit = env.GIT_COMMIT_ID ?: "unknown"
+                gitMessage = env.GIT_COMMIT_MSG ?: "unknown"
+                gitAuthor = env.GIT_AUTHOR ?: "unknown"
+            }
+
+            echo """
+=========================================
+Git Info for Email (Failure)
+=========================================
+Branch : ${gitBranch}
+Commit : ${gitCommit}
+Author : ${gitAuthor}
+Message: ${gitMessage}
+=========================================
+"""
+
+            def buildStatus = "FAILURE"
+            def buildDuration = currentBuild.durationString.replace(" and counting", "")
+            def buildTimestamp = new Date().format(
+                    "yyyy-MM-dd HH:mm:ss",
+                    TimeZone.getTimeZone("Asia/Shanghai")
+            )
+
+            def jobName = env.JOB_NAME
+            def buildNumber = env.BUILD_NUMBER
+            def testEnv = params.ENV
+            def buildUrl = env.BUILD_URL
+            def allureUrl = env.ALLURE_REPORT_URL ?: "N/A"
+
+            def html
+            try {
+                if (fileExists("ci/email-failure.html")) {
+                    html = readFile("ci/email-failure.html")
+                    echo "✅ Loaded email template from ci/email-failure.html"
+                } else {
+                    throw new Exception("File not found")
+                }
+
+                html = html
+                        .replace('${JOB_NAME}', jobName)
+                        .replace('${BUILD_NUMBER}', buildNumber)
+                        .replace('${ENV}', testEnv)
+                        .replace('${BUILD_STATUS}', buildStatus)
+                        .replace('${BUILD_DURATION}', buildDuration)
+                        .replace('${GIT_BRANCH}', gitBranch)
+                        .replace('${GIT_COMMIT}', gitCommit)
+                        .replace('${GIT_MESSAGE}', gitMessage)
+                        .replace('${GIT_AUTHOR}', gitAuthor)
+                        .replace('${BUILD_URL}', buildUrl)
+                        .replace('${ALLURE_URL}', allureUrl)
+                        .replace('${BUILD_TIMESTAMP}', buildTimestamp)
+            } catch (Exception e) {
+                echo "⚠️ ci/email-failure.html not found, using inline template"
+                html = """
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <style>
+                        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                        .header { background: #f44336; color: white; padding: 20px; text-align: center; border-radius: 5px; }
+                        .content { padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px; }
+                        .detail { margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #f44336; }
+                        .error-box { background: #fff3f3; border: 1px solid #f44336; padding: 15px; border-radius: 5px; margin: 15px 0; }
+                        .label { font-weight: bold; color: #555; }
+                        .footer { margin-top: 20px; text-align: center; color: #666; font-size: 12px; }
+                        a { color: #f44336; text-decoration: none; }
+                        a:hover { text-decoration: underline; }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header"><h2>❌ 自动化测试构建失败</h2></div>
+                        <div class="content">
+                            <div class="error-box"><strong>⚠️ 构建失败，请及时检查！</strong></div>
+                            <h3>📋 构建信息</h3>
+                            <div class="detail"><span class="label">项目名称：</span> ${jobName}</div>
+                            <div class="detail"><span class="label">构建编号：</span> #${buildNumber}</div>
+                            <div class="detail"><span class="label">测试环境：</span> ${testEnv}</div>
+                            <div class="detail"><span class="label">构建状态：</span> ❌ ${buildStatus}</div>
+                            <div class="detail"><span class="label">构建耗时：</span> ${buildDuration}</div>
+                            <div class="detail"><span class="label">构建时间：</span> ${buildTimestamp}</div>
+                            <h3>📝 Git 信息</h3>
+                            <div class="detail"><span class="label">分支：</span> ${gitBranch}</div>
+                            <div class="detail"><span class="label">提交 ID：</span> ${gitCommit}</div>
+                            <div class="detail"><span class="label">提交信息：</span> ${gitMessage}</div>
+                            <div class="detail"><span class="label">提交作者：</span> ${gitAuthor}</div>
+                            <h3>🔗 报告链接</h3>
+                            <div class="detail"><span class="label">Allure 测试报告：</span> <a href="${allureUrl}">${allureUrl}</a></div>
+                            <div class="detail"><span class="label">Jenkins 构建：</span> <a href="${buildUrl}">${buildUrl}</a></div>
+                        </div>
+                        <div class="footer"><p>此邮件由 Jenkins 自动发送，请勿回复。</p></div>
+                    </div>
+                </body>
+                </html>
+                """
+            }
+
+            emailext(
+                    to: params.EMAIL_TO,
+                    mimeType: 'text/html',
+                    subject: "❌ ${jobName} #${buildNumber} Build Failed",
+                    body: html
+            )
+
+            echo "📧 Failure email sent to ${params.EMAIL_TO}"
+            echo "   Git Branch: ${gitBranch}"
+            echo "   Git Commit: ${gitCommit}"
+
+        }
+
+    }
+
+    always {
+
+        echo "========================================="
+        echo "Build Finished."
+        echo "========================================="
+
+        // ===== cleanWs 放在最后执行 =====
+        cleanWs()
+
+    }
+
+}
 
 }
