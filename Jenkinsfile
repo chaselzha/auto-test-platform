@@ -71,48 +71,46 @@ pipeline {
      ************************************************/
     stages {
 
-                /************************************************
+        /************************************************
          * Checkout Source Code
          ************************************************/
-stage('Checkout') {
-    steps {
-        checkout scm
-        script {
-            env.BUILD_START_TIME = new Date().format(
-                    "yyyy-MM-dd HH:mm:ss",
-                    TimeZone.getTimeZone("Asia/Shanghai")
-            )
+        stage('Checkout') {
+            steps {
+                checkout scm
+                script {
+                    env.BUILD_START_TIME = new Date().format(
+                            "yyyy-MM-dd HH:mm:ss",
+                            TimeZone.getTimeZone("Asia/Shanghai")
+                    )
 
-            env.GIT_BRANCH_NAME = sh(
-                    script: "git rev-parse --abbrev-ref HEAD",
-                    returnStdout: true
-            ).trim()
+                    env.GIT_BRANCH_NAME = sh(
+                            script: "git rev-parse --abbrev-ref HEAD",
+                            returnStdout: true
+                    ).trim()
 
-            env.GIT_COMMIT_ID = sh(
-                    script: "git rev-parse --short HEAD",
-                    returnStdout: true
-            ).trim()
+                    env.GIT_COMMIT_ID = sh(
+                            script: "git rev-parse --short HEAD",
+                            returnStdout: true
+                    ).trim()
 
-            env.GIT_COMMIT_MSG = sh(
-                    script: "git log -1 --pretty=%s",
-                    returnStdout: true
-            ).trim()
+                    env.GIT_COMMIT_MSG = sh(
+                            script: "git log -1 --pretty=%s",
+                            returnStdout: true
+                    ).trim()
 
-            env.GIT_AUTHOR = sh(
-                    script: "git log -1 --pretty=%an",
-                    returnStdout: true
-            ).trim()
+                    env.GIT_AUTHOR = sh(
+                            script: "git log -1 --pretty=%an",
+                            returnStdout: true
+                    ).trim()
 
-            // ===== 新增：为邮件通知准备的变量 =====
-            // 注意：BUILD_STATUS 和 BUILD_DURATION 在构建完成前无法获取最终值
-            // 可以在 post 阶段重新设置这些值
-            env.ALLURE_REPORT_URL = "${env.BUILD_URL}allure/"
+                    // ===== 为邮件通知准备的变量 =====
+                    env.ALLURE_REPORT_URL = "${env.BUILD_URL}allure/"
 
-            // 设置默认值，post 阶段会更新
-            env.BUILD_STATUS = "RUNNING"
-            env.BUILD_DURATION = "Calculating..."
+                    // 设置默认值，post 阶段会更新
+                    env.BUILD_STATUS = "RUNNING"
+                    env.BUILD_DURATION = "Calculating..."
 
-            echo """
+                    echo """
 ==============================
 Git Information
 
@@ -123,9 +121,9 @@ Message: ${env.GIT_COMMIT_MSG}
 Allure: ${env.ALLURE_REPORT_URL}
 ==============================
 """
+                }
+            }
         }
-    }
-}
 
         /************************************************
          * Environment Check
@@ -240,7 +238,7 @@ Allure: ${env.ALLURE_REPORT_URL}
 
         }
 
-                /************************************************
+        /************************************************
          * Install Dependencies
          ************************************************/
         stage('Install Dependencies') {
@@ -298,7 +296,7 @@ Allure: ${env.ALLURE_REPORT_URL}
 
         }
 
-                /************************************************
+        /************************************************
          * Execute Automation Test
          ************************************************/
         stage('Execute Test') {
@@ -362,6 +360,7 @@ Allure: ${env.ALLURE_REPORT_URL}
             }
 
         }
+
         /************************************************
          * Generate Allure Report
          ************************************************/
@@ -411,87 +410,216 @@ Allure: ${env.ALLURE_REPORT_URL}
             }
 
         }
-}
 
-
+    }
 
     /************************************************
      * Post Actions
      ************************************************/
     post {
-    success {
-        script {
-            // 在 post 阶段重新设置这些变量
-            env.BUILD_STATUS = "SUCCESS"
-            env.BUILD_DURATION = currentBuild.durationString.replace(" and counting", "")
-            env.BUILD_TIMESTAMP = new Date().format(
-                    "yyyy-MM-dd HH:mm:ss",
-                    TimeZone.getTimeZone("Asia/Shanghai")
-            )
 
-            def html = readFile("ci/email-success.html")
-            html = html
-                    .replace('${JOB_NAME}', env.JOB_NAME)
-                    .replace('${BUILD_NUMBER}', env.BUILD_NUMBER)
-                    .replace('${ENV}', params.ENV)
-                    .replace('${BUILD_STATUS}', env.BUILD_STATUS)
-                    .replace('${BUILD_DURATION}', env.BUILD_DURATION)
-                    .replace('${GIT_BRANCH}', env.GIT_BRANCH_NAME)
-                    .replace('${GIT_COMMIT}', env.GIT_COMMIT_ID)
-                    .replace('${GIT_MESSAGE}', env.GIT_COMMIT_MSG)
-                    .replace('${GIT_AUTHOR}', env.GIT_AUTHOR)
-                    .replace('${BUILD_URL}', env.BUILD_URL)
-                    .replace('${ALLURE_URL}', env.ALLURE_REPORT_URL)
-                    .replace('${BUILD_TIMESTAMP}', env.BUILD_TIMESTAMP)
+        success {
 
-            emailext(
-                    to: params.EMAIL_TO,
-                    mimeType: 'text/html',
-                    subject: "✅ ${env.JOB_NAME} #${env.BUILD_NUMBER} Build Success",
-                    body: html
-            )
+            script {
+
+                // 在 post 阶段重新设置这些变量
+                env.BUILD_STATUS = "SUCCESS"
+                env.BUILD_DURATION = currentBuild.durationString.replace(" and counting", "")
+                env.BUILD_TIMESTAMP = new Date().format(
+                        "yyyy-MM-dd HH:mm:ss",
+                        TimeZone.getTimeZone("Asia/Shanghai")
+                )
+
+                // 尝试读取文件，如果不存在则使用内联 HTML
+                def html
+                try {
+                    html = readFile("ci/email-success.html")
+                    echo "✅ Loaded email template from ci/email-success.html"
+                } catch (Exception e) {
+                    echo "⚠️ ci/email-success.html not found, using inline template"
+                    html = """
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="UTF-8">
+                        <style>
+                            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                            .header { background: #4CAF50; color: white; padding: 20px; text-align: center; border-radius: 5px; }
+                            .content { padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px; }
+                            .detail { margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #4CAF50; }
+                            .label { font-weight: bold; color: #555; }
+                            .footer { margin-top: 20px; text-align: center; color: #666; font-size: 12px; }
+                            a { color: #4CAF50; text-decoration: none; }
+                            a:hover { text-decoration: underline; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <div class="header">
+                                <h2>✅ 自动化测试构建成功</h2>
+                            </div>
+                            <div class="content">
+                                <h3>📋 构建信息</h3>
+                                <div class="detail"><span class="label">项目名称：</span> ${JOB_NAME}</div>
+                                <div class="detail"><span class="label">构建编号：</span> #${BUILD_NUMBER}</div>
+                                <div class="detail"><span class="label">测试环境：</span> ${ENV}</div>
+                                <div class="detail"><span class="label">构建状态：</span> ✅ ${BUILD_STATUS}</div>
+                                <div class="detail"><span class="label">构建耗时：</span> ${BUILD_DURATION}</div>
+                                <div class="detail"><span class="label">构建时间：</span> ${BUILD_TIMESTAMP}</div>
+                                <h3>📝 Git 信息</h3>
+                                <div class="detail"><span class="label">分支：</span> ${GIT_BRANCH}</div>
+                                <div class="detail"><span class="label">提交 ID：</span> ${GIT_COMMIT}</div>
+                                <div class="detail"><span class="label">提交信息：</span> ${GIT_MESSAGE}</div>
+                                <div class="detail"><span class="label">提交作者：</span> ${GIT_AUTHOR}</div>
+                                <h3>🔗 报告链接</h3>
+                                <div class="detail"><span class="label">Allure 测试报告：</span> <a href="${ALLURE_URL}">${ALLURE_URL}</a></div>
+                                <div class="detail"><span class="label">Jenkins 构建：</span> <a href="${BUILD_URL}">${BUILD_URL}</a></div>
+                            </div>
+                            <div class="footer">
+                                <p>此邮件由 Jenkins 自动发送，请勿回复。</p>
+                            </div>
+                        </div>
+                    </body>
+                    </html>
+                    """
+                }
+
+                html = html
+                        .replace('${JOB_NAME}', env.JOB_NAME)
+                        .replace('${BUILD_NUMBER}', env.BUILD_NUMBER)
+                        .replace('${ENV}', params.ENV)
+                        .replace('${BUILD_STATUS}', env.BUILD_STATUS)
+                        .replace('${BUILD_DURATION}', env.BUILD_DURATION)
+                        .replace('${GIT_BRANCH}', env.GIT_BRANCH_NAME)
+                        .replace('${GIT_COMMIT}', env.GIT_COMMIT_ID)
+                        .replace('${GIT_MESSAGE}', env.GIT_COMMIT_MSG)
+                        .replace('${GIT_AUTHOR}', env.GIT_AUTHOR)
+                        .replace('${BUILD_URL}', env.BUILD_URL)
+                        .replace('${ALLURE_URL}', env.ALLURE_REPORT_URL)
+                        .replace('${BUILD_TIMESTAMP}', env.BUILD_TIMESTAMP)
+
+                emailext(
+                        to: params.EMAIL_TO,
+                        mimeType: 'text/html',
+                        subject: "✅ ${env.JOB_NAME} #${env.BUILD_NUMBER} Build Success",
+                        body: html
+                )
+
+                echo "📧 Success email sent to ${params.EMAIL_TO}"
+
+            }
+
         }
-    }
 
-    failure {
-        script {
-            // 在 post 阶段重新设置这些变量
-            env.BUILD_STATUS = "FAILURE"
-            env.BUILD_DURATION = currentBuild.durationString.replace(" and counting", "")
-            env.BUILD_TIMESTAMP = new Date().format(
-                    "yyyy-MM-dd HH:mm:ss",
-                    TimeZone.getTimeZone("Asia/Shanghai")
-            )
+        failure {
 
-            def html = readFile("ci/email-failure.html")
-            html = html
-                    .replace('${JOB_NAME}', env.JOB_NAME)
-                    .replace('${BUILD_NUMBER}', env.BUILD_NUMBER)
-                    .replace('${ENV}', params.ENV)
-                    .replace('${BUILD_STATUS}', env.BUILD_STATUS)
-                    .replace('${BUILD_DURATION}', env.BUILD_DURATION)
-                    .replace('${GIT_BRANCH}', env.GIT_BRANCH_NAME)
-                    .replace('${GIT_COMMIT}', env.GIT_COMMIT_ID)
-                    .replace('${GIT_MESSAGE}', env.GIT_COMMIT_MSG)
-                    .replace('${GIT_AUTHOR}', env.GIT_AUTHOR)
-                    .replace('${BUILD_URL}', env.BUILD_URL)
-                    .replace('${ALLURE_URL}', env.ALLURE_REPORT_URL)
-                    .replace('${BUILD_TIMESTAMP}', env.BUILD_TIMESTAMP)
+            script {
 
-            emailext(
-                    to: params.EMAIL_TO,
-                    mimeType: 'text/html',
-                    subject: "❌ ${env.JOB_NAME} #${env.BUILD_NUMBER} Build Failed",
-                    body: html
-            )
+                // 在 post 阶段重新设置这些变量
+                env.BUILD_STATUS = "FAILURE"
+                env.BUILD_DURATION = currentBuild.durationString.replace(" and counting", "")
+                env.BUILD_TIMESTAMP = new Date().format(
+                        "yyyy-MM-dd HH:mm:ss",
+                        TimeZone.getTimeZone("Asia/Shanghai")
+                )
+
+                // 尝试读取文件，如果不存在则使用内联 HTML
+                def html
+                try {
+                    html = readFile("ci/email-failure.html")
+                    echo "✅ Loaded email template from ci/email-failure.html"
+                } catch (Exception e) {
+                    echo "⚠️ ci/email-failure.html not found, using inline template"
+                    html = """
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="UTF-8">
+                        <style>
+                            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                            .header { background: #f44336; color: white; padding: 20px; text-align: center; border-radius: 5px; }
+                            .content { padding: 20px; background: #f9f9f9; border-radius: 5px; margin-top: 20px; }
+                            .detail { margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #f44336; }
+                            .error-box { background: #fff3f3; border: 1px solid #f44336; padding: 15px; border-radius: 5px; margin: 15px 0; }
+                            .label { font-weight: bold; color: #555; }
+                            .footer { margin-top: 20px; text-align: center; color: #666; font-size: 12px; }
+                            a { color: #f44336; text-decoration: none; }
+                            a:hover { text-decoration: underline; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <div class="header">
+                                <h2>❌ 自动化测试构建失败</h2>
+                            </div>
+                            <div class="content">
+                                <div class="error-box">
+                                    <strong>⚠️ 构建失败，请及时检查！</strong>
+                                </div>
+                                <h3>📋 构建信息</h3>
+                                <div class="detail"><span class="label">项目名称：</span> ${JOB_NAME}</div>
+                                <div class="detail"><span class="label">构建编号：</span> #${BUILD_NUMBER}</div>
+                                <div class="detail"><span class="label">测试环境：</span> ${ENV}</div>
+                                <div class="detail"><span class="label">构建状态：</span> ❌ ${BUILD_STATUS}</div>
+                                <div class="detail"><span class="label">构建耗时：</span> ${BUILD_DURATION}</div>
+                                <div class="detail"><span class="label">构建时间：</span> ${BUILD_TIMESTAMP}</div>
+                                <h3>📝 Git 信息</h3>
+                                <div class="detail"><span class="label">分支：</span> ${GIT_BRANCH}</div>
+                                <div class="detail"><span class="label">提交 ID：</span> ${GIT_COMMIT}</div>
+                                <div class="detail"><span class="label">提交信息：</span> ${GIT_MESSAGE}</div>
+                                <div class="detail"><span class="label">提交作者：</span> ${GIT_AUTHOR}</div>
+                                <h3>🔗 报告链接</h3>
+                                <div class="detail"><span class="label">Allure 测试报告：</span> <a href="${ALLURE_URL}">${ALLURE_URL}</a></div>
+                                <div class="detail"><span class="label">Jenkins 构建：</span> <a href="${BUILD_URL}">${BUILD_URL}</a></div>
+                            </div>
+                            <div class="footer">
+                                <p>此邮件由 Jenkins 自动发送，请勿回复。</p>
+                            </div>
+                        </div>
+                    </body>
+                    </html>
+                    """
+                }
+
+                html = html
+                        .replace('${JOB_NAME}', env.JOB_NAME)
+                        .replace('${BUILD_NUMBER}', env.BUILD_NUMBER)
+                        .replace('${ENV}', params.ENV)
+                        .replace('${BUILD_STATUS}', env.BUILD_STATUS)
+                        .replace('${BUILD_DURATION}', env.BUILD_DURATION)
+                        .replace('${GIT_BRANCH}', env.GIT_BRANCH_NAME)
+                        .replace('${GIT_COMMIT}', env.GIT_COMMIT_ID)
+                        .replace('${GIT_MESSAGE}', env.GIT_COMMIT_MSG)
+                        .replace('${GIT_AUTHOR}', env.GIT_AUTHOR)
+                        .replace('${BUILD_URL}', env.BUILD_URL)
+                        .replace('${ALLURE_URL}', env.ALLURE_REPORT_URL)
+                        .replace('${BUILD_TIMESTAMP}', env.BUILD_TIMESTAMP)
+
+                emailext(
+                        to: params.EMAIL_TO,
+                        mimeType: 'text/html',
+                        subject: "❌ ${env.JOB_NAME} #${env.BUILD_NUMBER} Build Failed",
+                        body: html
+                )
+
+                echo "📧 Failure email sent to ${params.EMAIL_TO}"
+
+            }
+
         }
+
+        always {
+
+            echo "========================================="
+            echo "Build Finished."
+            echo "========================================="
+
+            cleanWs()
+
+        }
+
     }
 
-    always {
-        echo "Build Finished."
-        cleanWs()
-    }
 }
-
-}
-
