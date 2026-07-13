@@ -7,7 +7,7 @@ from selenium.webdriver.firefox.service import Service as FirefoxService
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.firefox import GeckoDriverManager
-from utils.logger import logger
+from .logger import logger
 
 
 def get_driver(browser_type=None, headless=None):
@@ -23,7 +23,7 @@ def get_driver(browser_type=None, headless=None):
     """
     # 延迟导入配置，避免循环导入
     try:
-        from utils.config import get_config
+        from .config import get_config
         config = get_config()
         if browser_type is None:
             browser_type = config.browser_type
@@ -65,8 +65,7 @@ def _create_chrome_driver(headless=False):
     options.add_experimental_option("useAutomationExtension", False)
 
     # 设置 User-Agent（模拟真实浏览器）
-    options.add_argument(
-        "--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36")
+    options.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36")
 
     # 无头模式
     if headless:
@@ -98,7 +97,7 @@ def _create_chrome_driver(headless=False):
 
     # 设置隐式等待
     try:
-        from utils.config import get_config
+        from .config import get_config
         config = get_config()
         driver.implicitly_wait(config.implicit_wait)
     except Exception:
@@ -129,7 +128,7 @@ def _create_firefox_driver(headless=False):
     driver = webdriver.Firefox(service=service, options=options)
 
     try:
-        from utils.config import get_config
+        from .config import get_config
         config = get_config()
         driver.implicitly_wait(config.implicit_wait)
     except Exception:
@@ -161,7 +160,7 @@ def _create_edge_driver(headless=False):
     driver = webdriver.Edge(service=service, options=options)
 
     try:
-        from utils.config import get_config
+        from .config import get_config
         config = get_config()
         driver.implicitly_wait(config.implicit_wait)
     except Exception:
