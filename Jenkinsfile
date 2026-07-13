@@ -412,7 +412,7 @@ Message: ${env.GIT_COMMIT_MSG}
             }
 
         }
-
+}
 
 
 
