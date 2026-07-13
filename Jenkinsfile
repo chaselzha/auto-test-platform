@@ -531,12 +531,20 @@ Allure: ${env.ALLURE_REPORT_URL}
             def buildUrl = env.BUILD_URL
             def allureUrl = env.ALLURE_REPORT_URL ?: "N/A"
 
-            // 尝试读取文件，如果不存在则使用内联 HTML
+            // 使用 WORKSPACE 环境变量构建绝对路径
+            def workspace = env.WORKSPACE
+            def templateFile = "${workspace}/ci/email-success.html"
+
             def html
-            def templateFile = "ci/email-success.html"
             try {
-                html = readFile(templateFile)
-                echo "✅ Loaded email template from ${templateFile}"
+                // 检查文件是否存在
+                if (fileExists("ci/email-success.html")) {
+                    echo "✅ Found ci/email-success.html in workspace"
+                    html = readFile("ci/email-success.html")
+                    echo "✅ Loaded email template from ci/email-success.html"
+                } else {
+                    throw new Exception("File not found")
+                }
 
                 // 替换文件中的占位符
                 html = html
@@ -553,8 +561,8 @@ Allure: ${env.ALLURE_REPORT_URL}
                         .replace('${ALLURE_URL}', allureUrl)
                         .replace('${BUILD_TIMESTAMP}', buildTimestamp)
             } catch (Exception e) {
-                echo "⚠️ ${templateFile} not found, using inline template"
-                // 使用内联 HTML
+                echo "⚠️ ci/email-success.html not found, using inline template"
+                // 使用内联 HTML（保持不变）
                 html = """
                 <!DOCTYPE html>
                 <html>
@@ -634,12 +642,15 @@ Allure: ${env.ALLURE_REPORT_URL}
             def buildUrl = env.BUILD_URL
             def allureUrl = env.ALLURE_REPORT_URL ?: "N/A"
 
-            // 尝试读取文件，如果不存在则使用内联 HTML
             def html
-            def templateFile = "ci/email-failure.html"
             try {
-                html = readFile(templateFile)
-                echo "✅ Loaded email template from ${templateFile}"
+                if (fileExists("ci/email-failure.html")) {
+                    echo "✅ Found ci/email-failure.html in workspace"
+                    html = readFile("ci/email-failure.html")
+                    echo "✅ Loaded email template from ci/email-failure.html"
+                } else {
+                    throw new Exception("File not found")
+                }
 
                 html = html
                         .replace('${JOB_NAME}', jobName)
@@ -655,7 +666,7 @@ Allure: ${env.ALLURE_REPORT_URL}
                         .replace('${ALLURE_URL}', allureUrl)
                         .replace('${BUILD_TIMESTAMP}', buildTimestamp)
             } catch (Exception e) {
-                echo "⚠️ ${templateFile} not found, using inline template"
+                echo "⚠️ ci/email-failure.html not found, using inline template"
                 html = """
                 <!DOCTYPE html>
                 <html>
