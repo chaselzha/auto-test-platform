@@ -188,12 +188,13 @@ pipeline {
                     def startTime = System.currentTimeMillis()
                     def parallelFlag = params.PARALLEL ? "-n 4" : ""
 
+                    // 使用 python3 -m pytest 而不是直接调用 pytest
                     int result = sh(
                         script: """
                             export BROWSER=${params.BROWSER}
                             export HEADLESS=true
                             cd automation
-                            pytest tests/ \
+                            python3 -m pytest tests/ \
                                 --env=${params.ENV} \
                                 --alluredir=reports/allure-results \
                                 ${parallelFlag} \
@@ -243,12 +244,13 @@ pipeline {
                             def browserStart = System.currentTimeMillis()
                             def parallelFlag = params.PARALLEL ? "-n 2" : ""
 
+                            // 使用 python3 -m pytest 而不是直接调用 pytest
                             int result = sh(
                                 script: """
                                     export BROWSER=${browser}
                                     export HEADLESS=true
                                     cd automation
-                                    pytest tests/ \
+                                    python3 -m pytest tests/ \
                                         --env=${params.ENV} \
                                         --alluredir=reports/allure-results-${browser} \
                                         ${parallelFlag} \
@@ -343,28 +345,37 @@ pipeline {
                     echo "⚠️ Could not read Git info"
                 }
 
+                // 添加空值检查，防止 NullPointerException
+                def buildDuration = env.BUILD_DURATION ?: "N/A"
+                def buildStatus = "SUCCESS"
+                def browser = params.BROWSER ?: "chrome"
                 def buildTimestamp = new Date().format("yyyy-MM-dd HH:mm:ss", TimeZone.getTimeZone("Asia/Shanghai"))
+                def jobName = env.JOB_NAME ?: "N/A"
+                def buildNumber = env.BUILD_NUMBER ?: "N/A"
+                def testEnv = params.ENV ?: "test"
+                def buildUrl = env.BUILD_URL ?: "N/A"
+                def allureUrl = env.ALLURE_REPORT_URL ?: "N/A"
 
                 def html = readFile("ci/email-success.html")
                 html = html
-                    .replace('${JOB_NAME}', env.JOB_NAME)
-                    .replace('${BUILD_NUMBER}', env.BUILD_NUMBER)
-                    .replace('${ENV}', params.ENV)
-                    .replace('${BUILD_STATUS}', "SUCCESS")
-                    .replace('${BUILD_DURATION}', env.BUILD_DURATION)
+                    .replace('${JOB_NAME}', jobName)
+                    .replace('${BUILD_NUMBER}', buildNumber)
+                    .replace('${ENV}', testEnv)
+                    .replace('${BUILD_STATUS}', buildStatus)
+                    .replace('${BUILD_DURATION}', buildDuration)
                     .replace('${GIT_BRANCH}', gitBranch)
                     .replace('${GIT_COMMIT}', gitCommit)
                     .replace('${GIT_MESSAGE}', gitMessage)
                     .replace('${GIT_AUTHOR}', gitAuthor)
-                    .replace('${BUILD_URL}', env.BUILD_URL)
-                    .replace('${ALLURE_URL}', env.ALLURE_REPORT_URL)
+                    .replace('${BUILD_URL}', buildUrl)
+                    .replace('${ALLURE_URL}', allureUrl)
                     .replace('${BUILD_TIMESTAMP}', buildTimestamp)
-                    .replace('${BROWSER}', params.BROWSER)
+                    .replace('${BROWSER}', browser)
 
                 emailext(
                     to: params.EMAIL_TO,
                     mimeType: 'text/html',
-                    subject: "✅ ${env.JOB_NAME} #${env.BUILD_NUMBER} Build Success",
+                    subject: "✅ ${jobName} #${buildNumber} Build Success",
                     body: html
                 )
 
@@ -389,28 +400,37 @@ pipeline {
                     echo "⚠️ Could not read Git info"
                 }
 
+                // 添加空值检查，防止 NullPointerException
+                def buildDuration = env.BUILD_DURATION ?: "N/A"
+                def buildStatus = "FAILURE"
+                def browser = params.BROWSER ?: "chrome"
                 def buildTimestamp = new Date().format("yyyy-MM-dd HH:mm:ss", TimeZone.getTimeZone("Asia/Shanghai"))
+                def jobName = env.JOB_NAME ?: "N/A"
+                def buildNumber = env.BUILD_NUMBER ?: "N/A"
+                def testEnv = params.ENV ?: "test"
+                def buildUrl = env.BUILD_URL ?: "N/A"
+                def allureUrl = env.ALLURE_REPORT_URL ?: "N/A"
 
                 def html = readFile("ci/email-failure.html")
                 html = html
-                    .replace('${JOB_NAME}', env.JOB_NAME)
-                    .replace('${BUILD_NUMBER}', env.BUILD_NUMBER)
-                    .replace('${ENV}', params.ENV)
-                    .replace('${BUILD_STATUS}', "FAILURE")
-                    .replace('${BUILD_DURATION}', env.BUILD_DURATION)
+                    .replace('${JOB_NAME}', jobName)
+                    .replace('${BUILD_NUMBER}', buildNumber)
+                    .replace('${ENV}', testEnv)
+                    .replace('${BUILD_STATUS}', buildStatus)
+                    .replace('${BUILD_DURATION}', buildDuration)
                     .replace('${GIT_BRANCH}', gitBranch)
                     .replace('${GIT_COMMIT}', gitCommit)
                     .replace('${GIT_MESSAGE}', gitMessage)
                     .replace('${GIT_AUTHOR}', gitAuthor)
-                    .replace('${BUILD_URL}', env.BUILD_URL)
-                    .replace('${ALLURE_URL}', env.ALLURE_REPORT_URL)
+                    .replace('${BUILD_URL}', buildUrl)
+                    .replace('${ALLURE_URL}', allureUrl)
                     .replace('${BUILD_TIMESTAMP}', buildTimestamp)
-                    .replace('${BROWSER}', params.BROWSER)
+                    .replace('${BROWSER}', browser)
 
                 emailext(
                     to: params.EMAIL_TO,
                     mimeType: 'text/html',
-                    subject: "❌ ${env.JOB_NAME} #${env.BUILD_NUMBER} Build Failed",
+                    subject: "❌ ${jobName} #${buildNumber} Build Failed",
                     body: html
                 )
 
