@@ -1,13 +1,20 @@
 # api/dependencies.py
-from fastapi import Request, HTTPException
+from fastapi import Request, HTTPException, Depends
 from api.middleware.auth import verify_api_key, check_rate_limit
 from api.config.settings import settings
 
 
-async def get_current_user(api_key: str = verify_api_key):
+async def get_current_user(api_key: str = Depends(verify_api_key)):
     """
     获取当前用户（从 API Key 解析）
     """
+    # 如果认证未启用，返回匿名用户
+    if not settings.AUTH_ENABLED:
+        return {
+            "api_key": "anonymous",
+            "authenticated": False
+        }
+
     return {
         "api_key": api_key,
         "authenticated": True
@@ -33,8 +40,10 @@ def rate_limit(limit: int = 60, window: int = 60):
     """
     速率限制依赖
     """
-    async def _rate_limit(request: Request, api_key: str = verify_api_key):
+
+    async def _rate_limit(request: Request, api_key: str = Depends(verify_api_key)):
         # 使用 API Key + 路径作为限流 key
         key = f"{api_key}:{request.url.path}"
         return check_rate_limit(key, limit, window)
+
     return _rate_limit

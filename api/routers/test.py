@@ -70,8 +70,6 @@ async def get_tasks(
 
     - **limit**: 返回任务数量，默认 20
     """
-    # current_user 保留用于日志记录
-    _ = current_user  # 显式标记为已使用，避免警告
     tasks = task_manager.get_tasks(limit=limit)
     return tasks
 
@@ -86,9 +84,6 @@ async def get_task(
 
     - **task_id**: 任务 ID
     """
-    # current_user 保留用于日志记录
-    _ = current_user  # 显式标记为已使用，避免警告
-
     task = task_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -105,10 +100,6 @@ async def delete_task(
 
     - **task_id**: 任务 ID
     """
-    # 使用 current_user 记录操作日志
-    user_api_key = current_user.get('api_key', 'unknown')
-    print(f"👤 用户: {user_api_key} 删除任务 {task_id}")
-
     task = task_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -124,9 +115,6 @@ async def get_statistics(
     """
     获取统计信息（需要认证）
     """
-    # current_user 保留用于日志记录
-    _ = current_user  # 显式标记为已使用，避免警告
-
     tasks = task_manager.get_tasks(limit=1000)
     stats = {
         "total": len(tasks),
