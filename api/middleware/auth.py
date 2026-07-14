@@ -1,21 +1,17 @@
 # api/middleware/auth.py
 from fastapi import HTTPException, Security
 from fastapi.security import APIKeyHeader
-from fastapi import Request
-from starlette.status import HTTP_403_FORBIDDEN, HTTP_401_UNAUTHORIZED
 import time
-import hashlib
-import hmac
 
 from api.config.settings import settings
 
-# API Key 认证
+# API Key 认证 - 从 Header 中读取
 api_key_header = APIKeyHeader(name=settings.API_KEY_HEADER, auto_error=False)
 
 
 async def verify_api_key(api_key: str = Security(api_key_header)):
     """
-    验证 API Key
+    验证 API Key（从 Header 中读取）
     """
     # 如果认证未启用，直接通过
     if not settings.AUTH_ENABLED:
@@ -23,13 +19,13 @@ async def verify_api_key(api_key: str = Security(api_key_header)):
 
     if not api_key:
         raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
+            status_code=401,
             detail=f"Missing {settings.API_KEY_HEADER} header"
         )
 
     if api_key not in settings.VALID_API_KEYS:
         raise HTTPException(
-            status_code=HTTP_403_FORBIDDEN,
+            status_code=403,
             detail="Invalid API Key"
         )
 
@@ -44,34 +40,17 @@ async def verify_optional_api_key(api_key: str = Security(api_key_header)):
     if not settings.AUTH_ENABLED:
         return None
 
-    if api_key and api_key not in settings.VALID_API_KEYS:
+    # 如果没有提供 API Key，直接通过
+    if not api_key:
+        return None
+
+    if api_key not in settings.VALID_API_KEYS:
         raise HTTPException(
-            status_code=HTTP_403_FORBIDDEN,
+            status_code=403,
             detail="Invalid API Key"
         )
 
     return api_key
-
-
-# 简单签名认证（用于 Webhook）
-def verify_signature(payload: dict, signature: str, secret: str) -> bool:
-    """
-    验证请求签名
-    """
-    if not signature:
-        return False
-
-    # 对 payload 进行排序并生成签名
-    sorted_payload = sorted(payload.items())
-    message = "&".join([f"{k}={v}" for k, v in sorted_payload])
-
-    expected_signature = hmac.new(
-        secret.encode(),
-        message.encode(),
-        hashlib.sha256
-    ).hexdigest()
-
-    return hmac.compare_digest(signature, expected_signature)
 
 
 # 速率限制（简单版）
