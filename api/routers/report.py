@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from pathlib import Path
 import json
 import re
@@ -21,19 +21,20 @@ TASK_REPORTS_DIR = BASE_DIR / "task-reports"
 
 @router.get("/{task_id}")
 async def get_report(task_id: str):
-    """获取测试报告（优先 HTML，备选 JSON）"""
+    """获取测试报告 - 重定向到静态文件"""
     task = task_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
-    # 1. 尝试返回任务特定的 Allure 报告
     task_report_dir = TASK_REPORTS_DIR / task_id
     task_index = task_report_dir / "index.html"
 
+    # 如果报告已存在，重定向到静态文件路径
     if task_index.exists():
-        return FileResponse(task_index, media_type="text/html")
+        print(f"✅ 报告已存在，重定向到: /task-reports/{task_id}/index.html")
+        return RedirectResponse(url=f"/task-reports/{task_id}/index.html")
 
-    # 2. 检查 allure-results 是否存在并生成报告
+    # 检查 allure-results 是否存在并生成报告
     print(f"🔍 检查 Allure 结果目录: {ALLURE_RESULTS_DIR}")
 
     if not ALLURE_RESULTS_DIR.exists():
@@ -70,8 +71,8 @@ async def get_report(task_id: str):
             print(f"⚠️ 标准错误: {result.stderr[:500]}")
 
         if result.returncode == 0 and task_index.exists():
-            print(f"✅ 报告生成成功: {task_index}")
-            return FileResponse(task_index, media_type="text/html")
+            print(f"✅ 报告生成成功，重定向到: /task-reports/{task_id}/index.html")
+            return RedirectResponse(url=f"/task-reports/{task_id}/index.html")
         else:
             print(f"❌ 报告生成失败: {result.stderr}")
             return await get_report_json(task_id)
@@ -96,123 +97,6 @@ async def get_report(task_id: str):
             "task_id": task_id,
             "message": f"❌ 报告生成异常: {str(e)}"
         })
-
-
-@router.get("/{task_id}/assets/{filename:path}")
-async def get_report_asset_with_task(task_id: str, filename: str):
-    """获取 Allure 报告的静态资源文件（带 task_id）"""
-    task_report_dir = TASK_REPORTS_DIR / task_id
-    asset_file = task_report_dir / "assets" / filename
-
-    if asset_file.exists():
-        return FileResponse(asset_file)
-
-    # 尝试从全局报告目录查找
-    global_asset = ALLURE_REPORT_DIR / "assets" / filename
-    if global_asset.exists():
-        return FileResponse(global_asset)
-
-    raise HTTPException(status_code=404, detail="资源文件不存在")
-
-
-@router.get("/assets/{filename:path}")
-async def get_report_asset_without_task(filename: str):
-    """获取 Allure 报告的静态资源文件（不带 task_id，兼容模式）"""
-    # 尝试从最新的任务报告目录查找
-    if TASK_REPORTS_DIR.exists():
-        task_dirs = sorted(
-            [d for d in TASK_REPORTS_DIR.iterdir() if d.is_dir()],
-            key=lambda d: d.stat().st_mtime,
-            reverse=True
-        )
-
-        for task_dir in task_dirs:
-            asset_file = task_dir / "assets" / filename
-            if asset_file.exists():
-                return FileResponse(asset_file)
-
-    # 尝试从全局报告目录查找
-    global_asset = ALLURE_REPORT_DIR / "assets" / filename
-    if global_asset.exists():
-        return FileResponse(global_asset)
-
-    raise HTTPException(status_code=404, detail="资源文件不存在")
-
-
-# ===== 新增：处理 data 目录的资源文件 =====
-@router.get("/{task_id}/data/{filename:path}")
-async def get_report_data_with_task(task_id: str, filename: str):
-    """获取 Allure 报告的数据文件（带 task_id）"""
-    task_report_dir = TASK_REPORTS_DIR / task_id
-    data_file = task_report_dir / "data" / filename
-
-    if data_file.exists():
-        return FileResponse(data_file, media_type="application/json")
-
-    # 尝试从全局报告目录查找
-    global_data = ALLURE_REPORT_DIR / "data" / filename
-    if global_data.exists():
-        return FileResponse(global_data, media_type="application/json")
-
-    raise HTTPException(status_code=404, detail="数据文件不存在")
-
-
-@router.get("/data/{filename:path}")
-async def get_report_data_without_task(filename: str):
-    """获取 Allure 报告的数据文件（不带 task_id，兼容模式）"""
-    # 尝试从最新的任务报告目录查找
-    if TASK_REPORTS_DIR.exists():
-        task_dirs = sorted(
-            [d for d in TASK_REPORTS_DIR.iterdir() if d.is_dir()],
-            key=lambda d: d.stat().st_mtime,
-            reverse=True
-        )
-
-        for task_dir in task_dirs:
-            data_file = task_dir / "data" / filename
-            if data_file.exists():
-                return FileResponse(data_file, media_type="application/json")
-
-    # 尝试从全局报告目录查找
-    global_data = ALLURE_REPORT_DIR / "data" / filename
-    if global_data.exists():
-        return FileResponse(global_data, media_type="application/json")
-
-    raise HTTPException(status_code=404, detail="数据文件不存在")
-
-
-# ===== 新增：处理根目录下的其他资源文件 =====
-@router.get("/{task_id}/{filename:path}")
-async def get_report_file_with_task(task_id: str, filename: str):
-    """获取 Allure 报告的其他文件（带 task_id）"""
-    # 排除已经匹配的路由
-    if filename.startswith("assets/") or filename.startswith("data/"):
-        raise HTTPException(status_code=404)
-
-    task_report_dir = TASK_REPORTS_DIR / task_id
-    file_path = task_report_dir / filename
-
-    if file_path.exists():
-        # 根据文件类型返回相应的 media_type
-        if filename.endswith(".css"):
-            return FileResponse(file_path, media_type="text/css")
-        elif filename.endswith(".js"):
-            return FileResponse(file_path, media_type="application/javascript")
-        elif filename.endswith(".json"):
-            return FileResponse(file_path, media_type="application/json")
-        elif filename.endswith(".html"):
-            return FileResponse(file_path, media_type="text/html")
-        elif filename.endswith(".png") or filename.endswith(".svg"):
-            return FileResponse(file_path, media_type="image/png")
-        else:
-            return FileResponse(file_path)
-
-    # 尝试从全局报告目录查找
-    global_file = ALLURE_REPORT_DIR / filename
-    if global_file.exists():
-        return FileResponse(global_file)
-
-    raise HTTPException(status_code=404, detail="文件不存在")
 
 
 @router.get("/{task_id}/json")
@@ -279,9 +163,9 @@ async def get_report_json(task_id: str):
             "stderr": result.get("stderr", "")[-500:] if result.get("stderr") else ""
         },
         "html_available": True,
-        "html_url": f"/api/report/{task_id}",
+        "html_url": f"/task-reports/{task_id}/index.html",
         "allure_results_exists": allure_exists,
-        "message": "📊 测试报告数据"
+        "message": "📊 测试报告数据（JSON 格式）"
     })
 
 
@@ -382,7 +266,7 @@ async def generate_report(task_id: str):
                 "task_id": task_id,
                 "status": "success",
                 "report_path": str(task_report_dir / "index.html"),
-                "report_url": f"/api/report/{task_id}",
+                "report_url": f"/task-reports/{task_id}/index.html",
                 "message": "✅ Allure 报告生成成功"
             }
         else:
