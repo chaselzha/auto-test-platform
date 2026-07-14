@@ -88,23 +88,63 @@
 </div>
 <script>
     const API_BASE = '/api';
+    // 注意：这里需要和 .env 中的 API_KEY 保持一致
+    const API_KEY = 'test-api-key-123456';
+
+    // 添加请求拦截器，自动添加认证头
+    async function fetchWithAuth(url, options = {}) {
+        const headers = {
+            'X-API-Key': API_KEY,
+            'Content-Type': 'application/json',
+            ...options.headers
+        };
+
+        const response = await fetch(url, {
+            ...options,
+            headers
+        });
+
+        if (response.status === 401) {
+            alert('未授权：请检查 API Key 配置');
+            throw new Error('Unauthorized');
+        }
+
+        if (response.status === 429) {
+            alert('请求过于频繁，请稍后再试');
+            throw new Error('Rate limited');
+        }
+
+        return response;
+    }
+
     function getStatusBadge(status) {
-        const map = { 'success':'success', 'passed':'success', 'failed':'failed', 'failure':'failed', 'pending':'pending', 'running':'running' };
+        const map = {
+            'success': 'success',
+            'passed': 'success',
+            'failed': 'failed',
+            'failure': 'failed',
+            'pending': 'pending',
+            'running': 'running'
+        };
         return `<span class="status-badge ${map[status] || 'pending'}">${status.toUpperCase()}</span>`;
     }
+
     async function loadStats() {
         try {
-            const res = await fetch(`${API_BASE}/test/statistics`);
+            const res = await fetchWithAuth(`${API_BASE}/test/statistics`);
             const data = await res.json();
             document.getElementById('totalCount').textContent = data.total || 0;
             document.getElementById('successCount').textContent = data.success || 0;
             document.getElementById('failedCount').textContent = data.failed || 0;
             document.getElementById('pendingCount').textContent = (data.pending || 0) + (data.running || 0);
-        } catch(e) { console.error('加载统计失败:', e); }
+        } catch (e) {
+            console.error('加载统计失败:', e);
+        }
     }
+
     async function loadTasks() {
         try {
-            const res = await fetch(`${API_BASE}/test/tasks?limit=20`);
+            const res = await fetchWithAuth(`${API_BASE}/test/tasks?limit=20`);
             const tasks = await res.json();
             const tbody = document.getElementById('taskTableBody');
             if (tasks.length === 0) {
@@ -125,13 +165,26 @@
                     </tr>
                 `).join('');
             }
-        } catch(e) { console.error('加载任务失败:', e); }
+        } catch (e) {
+            console.error('加载任务失败:', e);
+        }
     }
-    function viewReport(taskId) { window.open(`/api/report/${taskId}`, '_blank'); }
+
+    function viewReport(taskId) {
+        window.open(`/api/report/${taskId}`, '_blank');
+    }
+
     async function deleteTask(taskId) {
         if (!confirm(`确定要删除任务 ${taskId} 吗？`)) return;
-        try { await fetch(`${API_BASE}/test/task/${taskId}`, { method: 'DELETE' }); loadTasks(); loadStats(); } catch(e) { alert('删除失败: ' + e.message); }
+        try {
+            await fetchWithAuth(`${API_BASE}/test/task/${taskId}`, { method: 'DELETE' });
+            loadTasks();
+            loadStats();
+        } catch (e) {
+            alert('删除失败: ' + e.message);
+        }
     }
+
     document.getElementById('testForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
@@ -142,27 +195,54 @@
             markers: formData.get('markers') || null,
             headless: formData.has('headless')
         };
+
         const msg = document.getElementById('runMessage');
         msg.textContent = '⏳ 提交中...';
         msg.style.color = '#666';
+
         try {
-            const res = await fetch(`${API_BASE}/test/run`, {
+            const res = await fetchWithAuth(`${API_BASE}/test/run`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
+
             const result = await res.json();
-            msg.textContent = `✅ 任务已提交: ${result.task_id}`;
-            msg.style.color = '#52c41a';
-            loadTasks(); loadStats();
-            setTimeout(() => { loadTasks(); loadStats(); }, 5000);
-        } catch(err) {
+            console.log('提交响应:', result);  // 调试日志
+
+            // 检查返回结果
+            if (result.task_id) {
+                msg.textContent = `✅ 任务已提交: ${result.task_id}`;
+                msg.style.color = '#52c41a';
+                loadTasks();
+                loadStats();
+                // 5秒后刷新任务列表
+                setTimeout(() => { loadTasks(); loadStats(); }, 5000);
+            } else if (result.message) {
+                msg.textContent = `✅ ${result.message}`;
+                msg.style.color = '#52c41a';
+                loadTasks();
+                loadStats();
+            } else {
+                msg.textContent = `❌ 提交失败: 未知错误`;
+                msg.style.color = '#ff4d4f';
+                console.error('未知响应格式:', result);
+            }
+        } catch (err) {
             msg.textContent = `❌ 提交失败: ${err.message}`;
             msg.style.color = '#ff4d4f';
+            console.error('提交错误:', err);
         }
     });
-    setInterval(() => { loadTasks(); loadStats(); }, 10000);
-    loadStats(); loadTasks();
+
+    // 自动刷新
+    setInterval(() => {
+        loadTasks();
+        loadStats();
+    }, 10000);
+
+    // 初始加载
+    loadStats();
+    loadTasks();
 </script>
 </body>
 </html>
