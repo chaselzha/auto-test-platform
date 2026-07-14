@@ -1,12 +1,13 @@
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+# api/routers/report.py
+from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import RedirectResponse, JSONResponse
 from pathlib import Path
-import json
 import re
 import subprocess
 import shutil
-from datetime import datetime
+
 from api.services.task_manager import task_manager
+from api.dependencies import optional_auth
 
 router = APIRouter()
 
@@ -20,8 +21,15 @@ TASK_REPORTS_DIR = BASE_DIR / "task-reports"
 
 
 @router.get("/{task_id}")
-async def get_report(task_id: str):
-    """获取测试报告 - 重定向到静态文件"""
+async def get_report(
+        task_id: str,
+        _api_key: str = Depends(optional_auth)
+):
+    """
+    获取测试报告（可选认证）
+
+    优先返回 Allure HTML 报告，如果不存在则返回 JSON 格式
+    """
     task = task_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
