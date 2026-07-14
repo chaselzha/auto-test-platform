@@ -10,10 +10,12 @@ from api.services.task_manager import task_manager
 
 router = APIRouter()
 
-# 目录配置
+# ===== 目录配置 - 适配您的项目结构 =====
 BASE_DIR = Path(__file__).parent.parent.parent
-ALLURE_RESULTS_DIR = BASE_DIR / "allure-results"
-ALLURE_REPORT_DIR = BASE_DIR / "allure-report"
+
+# Allure 结果目录（在 automation/reports 目录下）
+ALLURE_RESULTS_DIR = BASE_DIR / "automation" / "reports" / "allure-results"
+ALLURE_REPORT_DIR = BASE_DIR / "automation" / "reports" / "allure-report"
 TASK_REPORTS_DIR = BASE_DIR / "task-reports"
 
 
@@ -24,62 +26,51 @@ async def get_report(task_id: str):
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
-    # 1. 尝试返回 Allure HTML 报告
-    # 1.1 检查任务特定的报告
+    # 1. 尝试返回任务特定的 Allure 报告
     task_report_dir = TASK_REPORTS_DIR / task_id
     task_index = task_report_dir / "index.html"
 
     if task_index.exists():
         return FileResponse(task_index, media_type="text/html")
 
-    # 1.2 检查全局 Allure 报告
+    # 2. 检查 allure-results 是否存在并生成报告
+    print(f"🔍 检查 Allure 结果目录: {ALLURE_RESULTS_DIR}")
+    if ALLURE_RESULTS_DIR.exists():
+        result_files = list(ALLURE_RESULTS_DIR.glob("*.json"))
+        print(f"📊 找到 {len(result_files)} 个 Allure 结果文件")
+
+        if result_files:
+            try:
+                # 创建任务报告目录
+                task_report_dir.mkdir(parents=True, exist_ok=True)
+
+                # 生成 Allure 报告
+                print(f"📊 正在为任务 {task_id} 生成 Allure 报告...")
+                cmd = [
+                    "allure", "generate",
+                    str(ALLURE_RESULTS_DIR),
+                    "-o", str(task_report_dir),
+                    "--clean"
+                ]
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+
+                if result.returncode == 0 and task_index.exists():
+                    print(f"✅ 报告生成成功: {task_index}")
+                    return FileResponse(task_index, media_type="text/html")
+                else:
+                    print(f"❌ 报告生成失败: {result.stderr}")
+            except subprocess.TimeoutExpired:
+                print("❌ 报告生成超时")
+            except Exception as e:
+                print(f"❌ 报告生成异常: {e}")
+
+    # 3. 检查全局 Allure 报告
     if ALLURE_REPORT_DIR.exists():
         index_file = ALLURE_REPORT_DIR / "index.html"
         if index_file.exists():
-            # 如果有 Allure 结果但没有任务特定报告，尝试生成
-            if ALLURE_RESULTS_DIR.exists() and list(ALLURE_RESULTS_DIR.glob("*.json")):
-                try:
-                    # 为当前任务生成报告
-                    task_report_dir.mkdir(parents=True, exist_ok=True)
-                    cmd = [
-                        "allure", "generate",
-                        str(ALLURE_RESULTS_DIR),
-                        "-o", str(task_report_dir),
-                        "--clean"
-                    ]
-                    result = subprocess.run(cmd, capture_output=True, text=True)
-
-                    if result.returncode == 0 and task_index.exists():
-                        # 更新任务中的报告路径
-                        task["report_path"] = str(task_index)
-                        task_manager._save_task(task_id, task)
-                        return FileResponse(task_index, media_type="text/html")
-                except Exception as e:
-                    print(f"生成任务报告失败: {e}")
-
-            # 返回全局报告
             return FileResponse(index_file, media_type="text/html")
 
-    # 2. 尝试生成新报告
-    if ALLURE_RESULTS_DIR.exists() and list(ALLURE_RESULTS_DIR.glob("*.json")):
-        try:
-            task_report_dir.mkdir(parents=True, exist_ok=True)
-            cmd = [
-                "allure", "generate",
-                str(ALLURE_RESULTS_DIR),
-                "-o", str(task_report_dir),
-                "--clean"
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True)
-
-            if result.returncode == 0 and task_index.exists():
-                task["report_path"] = str(task_index)
-                task_manager._save_task(task_id, task)
-                return FileResponse(task_index, media_type="text/html")
-        except Exception as e:
-            print(f"生成报告失败: {e}")
-
-    # 3. 返回 JSON 格式（备选方案）
+    # 4. 返回 JSON 格式（备选方案）
     return await get_report_json(task_id)
 
 
@@ -121,6 +112,18 @@ async def get_report_json(task_id: str):
             errors = int(match_errors.group(1))
             total += errors
 
+        # 如果没有匹配到，尝试其他格式
+        if total == 0:
+            match = re.search(r"===.*?(\d+)\s+passed.*?(\d+)\s+failed.*?(\d+)\s+skipped", stdout, re.DOTALL)
+            if match:
+                passed = int(match.group(1))
+                failed = int(match.group(2))
+                skipped = int(match.group(3))
+                total = passed + failed + skipped
+
+    # 检查 Allure 结果是否存在
+    allure_exists = ALLURE_RESULTS_DIR.exists() and list(ALLURE_RESULTS_DIR.glob("*.json"))
+
     return JSONResponse(content={
         "task_id": task_id,
         "status": task.get("status"),
@@ -142,6 +145,8 @@ async def get_report_json(task_id: str):
             "stderr": result.get("stderr", "")[-500:] if result.get("stderr") else ""
         },
         "html_available": False,
+        "allure_results_exists": allure_exists,
+        "allure_results_path": str(ALLURE_RESULTS_DIR) if allure_exists else None,
         "message": "📊 JSON 格式报告（HTML 报告不可用）"
     })
 
@@ -214,12 +219,18 @@ async def generate_report(task_id: str):
         raise HTTPException(status_code=404, detail="任务不存在")
 
     if not ALLURE_RESULTS_DIR.exists():
-        return {"error": "Allure 结果目录不存在，请先执行测试"}
+        return {
+            "error": f"Allure 结果目录不存在: {ALLURE_RESULTS_DIR}",
+            "suggestion": "请先执行测试生成 Allure 结果"
+        }
 
-    if not list(ALLURE_RESULTS_DIR.glob("*.json")):
-        return {"error": "Allure 结果目录为空，请先执行测试"}
+    result_files = list(ALLURE_RESULTS_DIR.glob("*.json"))
+    if not result_files:
+        return {
+            "error": "Allure 结果目录为空",
+            "suggestion": "请先执行测试生成 Allure 结果"
+        }
 
-    # 创建任务报告目录
     task_report_dir = TASK_REPORTS_DIR / task_id
     task_report_dir.mkdir(parents=True, exist_ok=True)
 
@@ -230,11 +241,9 @@ async def generate_report(task_id: str):
             "-o", str(task_report_dir),
             "--clean"
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
         if result.returncode == 0:
-            task["report_path"] = str(task_report_dir / "index.html")
-            task_manager._save_task(task_id, task)
             return {
                 "task_id": task_id,
                 "status": "success",
@@ -248,6 +257,12 @@ async def generate_report(task_id: str):
                 "error": result.stderr,
                 "message": "❌ 报告生成失败"
             }
+    except subprocess.TimeoutExpired:
+        return {
+            "task_id": task_id,
+            "status": "timeout",
+            "message": "⏰ 报告生成超时"
+        }
     except Exception as e:
         return {
             "task_id": task_id,
