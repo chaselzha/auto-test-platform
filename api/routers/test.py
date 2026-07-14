@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import List
 import uuid
 from datetime import datetime
+import asyncio
 
 from api.services.task_manager import task_manager
 from api.services.test_runner import test_runner
@@ -20,18 +21,10 @@ async def run_test(
 ):
     """
     执行测试任务（需要认证）
-
-    - **env**: 测试环境 (test/dev/prod)
-    - **browser**: 浏览器 (chrome/firefox/edge)
-    - **parallel**: 并行数 (1-8)
-    - **markers**: 测试标记 (如: smoke, regression)
-    - **headless**: 是否无头模式
     """
-    # 使用 current_user 记录操作日志
     user_api_key = current_user.get('api_key', 'unknown')
     print(f"👤 用户: {user_api_key} 执行测试")
 
-    # 使用 model_dump() 替代 dict()（Pydantic v2 推荐）
     params_dict = params.model_dump()
     print(f"📋 参数: {params_dict}")
 
@@ -42,10 +35,14 @@ async def run_test(
 
     # 执行测试（异步）
     try:
+        # 直接调用异步方法
         result = await test_runner.run_tests(params_dict)
         task_manager.update_task(task_id, result)
+        print(f"✅ 任务 {task_id} 完成，状态: {result.get('status')}")
     except Exception as e:
         print(f"❌ 测试执行失败: {e}")
+        import traceback
+        traceback.print_exc()
         task_manager.update_task(task_id, {
             "status": "failed",
             "error": str(e),
@@ -65,11 +62,7 @@ async def get_tasks(
         limit: int = 20,
         current_user: dict = Depends(get_current_user)
 ):
-    """
-    获取任务列表（需要认证）
-
-    - **limit**: 返回任务数量，默认 20
-    """
+    """获取任务列表"""
     tasks = task_manager.get_tasks(limit=limit)
     return tasks
 
@@ -79,11 +72,7 @@ async def get_task(
         task_id: str,
         current_user: dict = Depends(get_current_user)
 ):
-    """
-    获取任务详情（需要认证）
-
-    - **task_id**: 任务 ID
-    """
+    """获取任务详情"""
     task = task_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -95,11 +84,7 @@ async def delete_task(
         task_id: str,
         current_user: dict = Depends(get_current_user)
 ):
-    """
-    删除任务（需要认证）
-
-    - **task_id**: 任务 ID
-    """
+    """删除任务"""
     task = task_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -112,9 +97,7 @@ async def delete_task(
 async def get_statistics(
         current_user: dict = Depends(get_current_user)
 ):
-    """
-    获取统计信息（需要认证）
-    """
+    """获取统计信息"""
     tasks = task_manager.get_tasks(limit=1000)
     stats = {
         "total": len(tasks),
@@ -134,9 +117,7 @@ async def get_statistics(
 
 @router.get("/public/health")
 async def public_health():
-    """
-    公开的健康检查（无需认证）
-    """
+    """公开的健康检查"""
     return {
         "status": "healthy",
         "message": "API is running",

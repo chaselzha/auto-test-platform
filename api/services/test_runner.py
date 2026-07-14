@@ -1,99 +1,168 @@
 # api/services/test_runner.py
 import subprocess
-import os
-import sys
+import json
+import uuid
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any
-
-# 添加项目根目录到系统路径
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-
-from automation.utils.logger import logger
-from api.services.task_manager import task_manager
+from typing import Dict, Any, Optional
+import asyncio
+import sys
 
 
 class TestRunner:
-    """测试执行器"""
-
     def __init__(self):
-        self.project_root = Path(__file__).parent.parent.parent
-        self.automation_dir = self.project_root / "automation"
-        self.reports_dir = self.automation_dir / "reports" / "allure-results"
+        self.base_dir = Path(__file__).parent.parent.parent
+        self.results_dir = self.base_dir / "automation" / "reports" / "allure-results"
+        self.reports_dir = self.base_dir / "task-reports"
+
+        # 确保目录存在
+        self.results_dir.mkdir(parents=True, exist_ok=True)
         self.reports_dir.mkdir(parents=True, exist_ok=True)
 
-    def run(self, task_id: str, env: str, browser: str, headless: bool = True,
-            test_path: str = None, parallel: int = 1, markers: str = None):
+        print(f"✅ TestRunner 初始化完成")
+        print(f"   📁 基础目录: {self.base_dir}")
+        print(f"   📁 结果目录: {self.results_dir}")
+        print(f"   📁 报告目录: {self.reports_dir}")
+
+    async def run_tests(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """执行测试"""
+        task_id = str(uuid.uuid4())[:8]
+        start_time = datetime.now()
+
+        # 获取参数
+        env = params.get('env', 'test')
+        browser = params.get('browser', 'chrome')
+        parallel = params.get('parallel', 4)
+        markers = params.get('markers')
+        headless = params.get('headless', True)
+
+        # 构建 pytest 命令
+        cmd = [
+            sys.executable, "-m", "pytest",  # 使用当前 Python 解释器
+            "-v",
+            "--tb=short",
+            f"-n={parallel}",
+            "--alluredir", str(self.results_dir),
+            "--clean-alluredir"
+        ]
+
+        # 添加标记
+        if markers:
+            cmd.extend(["-m", markers])
+
+        # 添加测试路径
+        cmd.append("automation/tests/")
+
+        print(f"🔧 执行命令: {' '.join(cmd)}")
+        print(f"🌍 环境: {env}, 浏览器: {browser}, 并行: {parallel}")
+        print(f"🏷️ 标记: {markers}")
+
+        # 设置环境变量
+        env_vars = {
+            **subprocess.os.environ,
+            "TEST_ENV": env,
+            "BROWSER": browser,
+            "HEADLESS": str(headless),
+            "PYTHONUNBUFFERED": "1"  # 确保输出实时显示
+        }
+
         try:
-            task_manager.update_task(task_id, status="running")
-            start_time = datetime.now()
-
-            # 设置环境变量
-            os.environ["TEST_ENV"] = env
-            os.environ["BROWSER"] = browser
-            os.environ["HEADLESS"] = str(headless).lower()
-            os.environ["BUILD_NUMBER"] = f"api-{task_id}"
-
-            # 构建命令
-            cmd = [
-                sys.executable, "-m", "pytest",
-                str(self.automation_dir / "tests") if not test_path else str(self.automation_dir / test_path),
-                f"--env={env}",
-                f"--alluredir={self.reports_dir}",
-                "-v",
-                "--tb=short"
-            ]
-
-            if parallel > 1:
-                cmd.extend(["-n", str(parallel)])
-
-            if markers:
-                cmd.extend(["-m", markers])
-
-            logger.info(f"🚀 执行测试: task_id={task_id}, env={env}, browser={browser}")
-            logger.debug(f"📋 命令: {' '.join(cmd)}")
-
-            # 执行测试
-            result = subprocess.run(
-                cmd,
-                cwd=str(self.automation_dir),
-                capture_output=True,
-                text=True,
-                env=os.environ.copy()
+            # 使用 asyncio 执行子进程
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env_vars,
+                cwd=str(self.base_dir)
             )
+
+            # 等待完成，设置超时
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(),
+                    timeout=3600  # 1小时超时
+                )
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                raise TimeoutError("测试执行超时（1小时）")
 
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
 
-            # 更新任务结果
-            status = "success" if result.returncode == 0 else "failed"
+            # 解码输出
+            stdout_text = stdout.decode('utf-8', errors='ignore')
+            stderr_text = stderr.decode('utf-8', errors='ignore')
 
-            task_manager.update_task(
-                task_id,
-                status=status,
-                end_time=end_time.isoformat(),
-                duration=duration,
-                exit_code=result.returncode,
-                result={
-                    "stdout": result.stdout,
-                    "stderr": result.stderr,
-                    "report_path": str(self.reports_dir),
-                    "allure_url": f"/api/report/{task_id}"
+            # 判断状态
+            status = "success" if process.returncode == 0 else "failed"
+
+            print(f"📊 测试完成，返回码: {process.returncode}")
+            print(f"⏱️ 耗时: {duration:.2f}s")
+
+            return {
+                "task_id": task_id,
+                "status": status,
+                "env": env,
+                "browser": browser,
+                "parallel": parallel,
+                "markers": markers,
+                "headless": headless,
+                "start_time": start_time.isoformat(),
+                "end_time": end_time.isoformat(),
+                "duration": duration,
+                "result": {
+                    "stdout": stdout_text,
+                    "stderr": stderr_text,
+                    "returncode": process.returncode
                 }
-            )
+            }
 
-            logger.info(f"✅ 测试完成: task_id={task_id}, status={status}, duration={duration:.2f}s")
+        except TimeoutError as e:
+            print(f"⏰ 测试超时: {e}")
+            return {
+                "task_id": task_id,
+                "status": "failed",
+                "env": env,
+                "browser": browser,
+                "parallel": parallel,
+                "markers": markers,
+                "headless": headless,
+                "start_time": start_time.isoformat(),
+                "end_time": datetime.now().isoformat(),
+                "duration": 0,
+                "result": {
+                    "stdout": "",
+                    "stderr": str(e),
+                    "returncode": -1
+                },
+                "error": str(e)
+            }
 
         except Exception as e:
-            logger.error(f"❌ 测试执行失败: {e}")
-            task_manager.update_task(
-                task_id,
-                status="failed",
-                end_time=datetime.now().isoformat(),
-                result={"error": str(e)}
-            )
+            print(f"❌ 测试执行异常: {e}")
+            import traceback
+            traceback.print_exc()
+
+            return {
+                "task_id": task_id,
+                "status": "failed",
+                "env": env,
+                "browser": browser,
+                "parallel": parallel,
+                "markers": markers,
+                "headless": headless,
+                "start_time": start_time.isoformat(),
+                "end_time": datetime.now().isoformat(),
+                "duration": 0,
+                "result": {
+                    "stdout": "",
+                    "stderr": str(e),
+                    "returncode": -1
+                },
+                "error": str(e)
+            }
 
 
-# 全局测试执行器
+# 创建全局实例
 test_runner = TestRunner()
