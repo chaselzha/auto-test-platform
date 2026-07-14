@@ -1,6 +1,5 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 import json
 import re
@@ -32,7 +31,6 @@ async def get_report(task_id: str):
     task_index = task_report_dir / "index.html"
 
     if task_index.exists():
-        # 返回报告页面
         return FileResponse(task_index, media_type="text/html")
 
     # 2. 检查 allure-results 是否存在并生成报告
@@ -122,7 +120,6 @@ async def get_report_asset_without_task(filename: str):
     """获取 Allure 报告的静态资源文件（不带 task_id，兼容模式）"""
     # 尝试从最新的任务报告目录查找
     if TASK_REPORTS_DIR.exists():
-        # 获取所有任务报告目录，按修改时间排序
         task_dirs = sorted(
             [d for d in TASK_REPORTS_DIR.iterdir() if d.is_dir()],
             key=lambda d: d.stat().st_mtime,
@@ -142,6 +139,82 @@ async def get_report_asset_without_task(filename: str):
     raise HTTPException(status_code=404, detail="资源文件不存在")
 
 
+# ===== 新增：处理 data 目录的资源文件 =====
+@router.get("/{task_id}/data/{filename:path}")
+async def get_report_data_with_task(task_id: str, filename: str):
+    """获取 Allure 报告的数据文件（带 task_id）"""
+    task_report_dir = TASK_REPORTS_DIR / task_id
+    data_file = task_report_dir / "data" / filename
+
+    if data_file.exists():
+        return FileResponse(data_file, media_type="application/json")
+
+    # 尝试从全局报告目录查找
+    global_data = ALLURE_REPORT_DIR / "data" / filename
+    if global_data.exists():
+        return FileResponse(global_data, media_type="application/json")
+
+    raise HTTPException(status_code=404, detail="数据文件不存在")
+
+
+@router.get("/data/{filename:path}")
+async def get_report_data_without_task(filename: str):
+    """获取 Allure 报告的数据文件（不带 task_id，兼容模式）"""
+    # 尝试从最新的任务报告目录查找
+    if TASK_REPORTS_DIR.exists():
+        task_dirs = sorted(
+            [d for d in TASK_REPORTS_DIR.iterdir() if d.is_dir()],
+            key=lambda d: d.stat().st_mtime,
+            reverse=True
+        )
+
+        for task_dir in task_dirs:
+            data_file = task_dir / "data" / filename
+            if data_file.exists():
+                return FileResponse(data_file, media_type="application/json")
+
+    # 尝试从全局报告目录查找
+    global_data = ALLURE_REPORT_DIR / "data" / filename
+    if global_data.exists():
+        return FileResponse(global_data, media_type="application/json")
+
+    raise HTTPException(status_code=404, detail="数据文件不存在")
+
+
+# ===== 新增：处理根目录下的其他资源文件 =====
+@router.get("/{task_id}/{filename:path}")
+async def get_report_file_with_task(task_id: str, filename: str):
+    """获取 Allure 报告的其他文件（带 task_id）"""
+    # 排除已经匹配的路由
+    if filename.startswith("assets/") or filename.startswith("data/"):
+        raise HTTPException(status_code=404)
+
+    task_report_dir = TASK_REPORTS_DIR / task_id
+    file_path = task_report_dir / filename
+
+    if file_path.exists():
+        # 根据文件类型返回相应的 media_type
+        if filename.endswith(".css"):
+            return FileResponse(file_path, media_type="text/css")
+        elif filename.endswith(".js"):
+            return FileResponse(file_path, media_type="application/javascript")
+        elif filename.endswith(".json"):
+            return FileResponse(file_path, media_type="application/json")
+        elif filename.endswith(".html"):
+            return FileResponse(file_path, media_type="text/html")
+        elif filename.endswith(".png") or filename.endswith(".svg"):
+            return FileResponse(file_path, media_type="image/png")
+        else:
+            return FileResponse(file_path)
+
+    # 尝试从全局报告目录查找
+    global_file = ALLURE_REPORT_DIR / filename
+    if global_file.exists():
+        return FileResponse(global_file)
+
+    raise HTTPException(status_code=404, detail="文件不存在")
+
+
 @router.get("/{task_id}/json")
 async def get_report_json(task_id: str):
     """获取 JSON 格式的测试报告"""
@@ -149,11 +222,9 @@ async def get_report_json(task_id: str):
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
-    # 解析测试结果
     result = task.get("result", {})
     stdout = result.get("stdout", "")
 
-    # 解析测试统计
     total = 0
     passed = 0
     failed = 0
