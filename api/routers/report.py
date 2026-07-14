@@ -101,13 +101,38 @@ async def get_report(task_id: str):
 
 
 @router.get("/{task_id}/assets/{filename:path}")
-async def get_report_asset(task_id: str, filename: str):
-    """获取 Allure 报告的静态资源文件"""
+async def get_report_asset_with_task(task_id: str, filename: str):
+    """获取 Allure 报告的静态资源文件（带 task_id）"""
     task_report_dir = TASK_REPORTS_DIR / task_id
     asset_file = task_report_dir / "assets" / filename
 
     if asset_file.exists():
         return FileResponse(asset_file)
+
+    # 尝试从全局报告目录查找
+    global_asset = ALLURE_REPORT_DIR / "assets" / filename
+    if global_asset.exists():
+        return FileResponse(global_asset)
+
+    raise HTTPException(status_code=404, detail="资源文件不存在")
+
+
+@router.get("/assets/{filename:path}")
+async def get_report_asset_without_task(filename: str):
+    """获取 Allure 报告的静态资源文件（不带 task_id，兼容模式）"""
+    # 尝试从最新的任务报告目录查找
+    if TASK_REPORTS_DIR.exists():
+        # 获取所有任务报告目录，按修改时间排序
+        task_dirs = sorted(
+            [d for d in TASK_REPORTS_DIR.iterdir() if d.is_dir()],
+            key=lambda d: d.stat().st_mtime,
+            reverse=True
+        )
+
+        for task_dir in task_dirs:
+            asset_file = task_dir / "assets" / filename
+            if asset_file.exists():
+                return FileResponse(asset_file)
 
     # 尝试从全局报告目录查找
     global_asset = ALLURE_REPORT_DIR / "assets" / filename
