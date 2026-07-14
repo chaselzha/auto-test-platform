@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 import json
 import re
@@ -10,10 +11,10 @@ from api.services.task_manager import task_manager
 
 router = APIRouter()
 
-# ===== 目录配置 - 适配您的项目结构 =====
+# ===== 目录配置 =====
 BASE_DIR = Path(__file__).parent.parent.parent
 
-# Allure 结果目录（在 automation/reports 目录下）
+# Allure 结果目录
 ALLURE_RESULTS_DIR = BASE_DIR / "automation" / "reports" / "allure-results"
 ALLURE_REPORT_DIR = BASE_DIR / "automation" / "reports" / "allure-report"
 TASK_REPORTS_DIR = BASE_DIR / "task-reports"
@@ -31,47 +32,89 @@ async def get_report(task_id: str):
     task_index = task_report_dir / "index.html"
 
     if task_index.exists():
+        # 返回报告页面
         return FileResponse(task_index, media_type="text/html")
 
     # 2. 检查 allure-results 是否存在并生成报告
     print(f"🔍 检查 Allure 结果目录: {ALLURE_RESULTS_DIR}")
-    if ALLURE_RESULTS_DIR.exists():
-        result_files = list(ALLURE_RESULTS_DIR.glob("*.json"))
-        print(f"📊 找到 {len(result_files)} 个 Allure 结果文件")
 
-        if result_files:
-            try:
-                # 创建任务报告目录
-                task_report_dir.mkdir(parents=True, exist_ok=True)
+    if not ALLURE_RESULTS_DIR.exists():
+        print(f"❌ Allure 结果目录不存在: {ALLURE_RESULTS_DIR}")
+        return await get_report_json(task_id)
 
-                # 生成 Allure 报告
-                print(f"📊 正在为任务 {task_id} 生成 Allure 报告...")
-                cmd = [
-                    "allure", "generate",
-                    str(ALLURE_RESULTS_DIR),
-                    "-o", str(task_report_dir),
-                    "--clean"
-                ]
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    result_files = list(ALLURE_RESULTS_DIR.glob("*.json"))
+    print(f"📊 找到 {len(result_files)} 个 Allure 结果文件")
 
-                if result.returncode == 0 and task_index.exists():
-                    print(f"✅ 报告生成成功: {task_index}")
-                    return FileResponse(task_index, media_type="text/html")
-                else:
-                    print(f"❌ 报告生成失败: {result.stderr}")
-            except subprocess.TimeoutExpired:
-                print("❌ 报告生成超时")
-            except Exception as e:
-                print(f"❌ 报告生成异常: {e}")
+    if not result_files:
+        print("❌ Allure 结果目录为空")
+        return await get_report_json(task_id)
 
-    # 3. 检查全局 Allure 报告
-    if ALLURE_REPORT_DIR.exists():
-        index_file = ALLURE_REPORT_DIR / "index.html"
-        if index_file.exists():
-            return FileResponse(index_file, media_type="text/html")
+    try:
+        # 创建任务报告目录
+        task_report_dir.mkdir(parents=True, exist_ok=True)
 
-    # 4. 返回 JSON 格式（备选方案）
-    return await get_report_json(task_id)
+        # 生成 Allure 报告
+        print(f"📊 正在为任务 {task_id} 生成 Allure 报告...")
+        cmd = [
+            "allure", "generate",
+            str(ALLURE_RESULTS_DIR),
+            "-o", str(task_report_dir),
+            "--clean"
+        ]
+        print(f"🔧 执行命令: {' '.join(cmd)}")
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+
+        print(f"📝 返回码: {result.returncode}")
+        if result.stdout:
+            print(f"📤 标准输出: {result.stdout[:500]}")
+        if result.stderr:
+            print(f"⚠️ 标准错误: {result.stderr[:500]}")
+
+        if result.returncode == 0 and task_index.exists():
+            print(f"✅ 报告生成成功: {task_index}")
+            return FileResponse(task_index, media_type="text/html")
+        else:
+            print(f"❌ 报告生成失败: {result.stderr}")
+            return await get_report_json(task_id)
+    except subprocess.TimeoutExpired:
+        print("❌ 报告生成超时")
+        return JSONResponse(content={
+            "error": "报告生成超时",
+            "task_id": task_id,
+            "message": "⏰ Allure 报告生成超时"
+        })
+    except FileNotFoundError as e:
+        print(f"❌ Allure 命令未找到: {e}")
+        return JSONResponse(content={
+            "error": "Allure 命令未找到",
+            "task_id": task_id,
+            "message": "❌ 请确保 Allure 已安装并添加到 PATH 中"
+        })
+    except Exception as e:
+        print(f"❌ 报告生成异常: {e}")
+        return JSONResponse(content={
+            "error": str(e),
+            "task_id": task_id,
+            "message": f"❌ 报告生成异常: {str(e)}"
+        })
+
+
+@router.get("/{task_id}/assets/{filename:path}")
+async def get_report_asset(task_id: str, filename: str):
+    """获取 Allure 报告的静态资源文件"""
+    task_report_dir = TASK_REPORTS_DIR / task_id
+    asset_file = task_report_dir / "assets" / filename
+
+    if asset_file.exists():
+        return FileResponse(asset_file)
+
+    # 尝试从全局报告目录查找
+    global_asset = ALLURE_REPORT_DIR / "assets" / filename
+    if global_asset.exists():
+        return FileResponse(global_asset)
+
+    raise HTTPException(status_code=404, detail="资源文件不存在")
 
 
 @router.get("/{task_id}/json")
@@ -93,26 +136,22 @@ async def get_report_json(task_id: str):
     errors = 0
 
     if stdout:
-        # 匹配 "X passed, Y failed"
         match = re.search(r"(\d+)\s+passed.*?(\d+)\s+failed", stdout)
         if match:
             passed = int(match.group(1))
             failed = int(match.group(2))
             total = passed + failed
 
-        # 匹配 skipped
         match_skipped = re.search(r"(\d+)\s+skipped", stdout)
         if match_skipped:
             skipped = int(match_skipped.group(1))
             total += skipped
 
-        # 匹配 errors
         match_errors = re.search(r"(\d+)\s+errors?", stdout)
         if match_errors:
             errors = int(match_errors.group(1))
             total += errors
 
-        # 如果没有匹配到，尝试其他格式
         if total == 0:
             match = re.search(r"===.*?(\d+)\s+passed.*?(\d+)\s+failed.*?(\d+)\s+skipped", stdout, re.DOTALL)
             if match:
@@ -121,7 +160,6 @@ async def get_report_json(task_id: str):
                 skipped = int(match.group(3))
                 total = passed + failed + skipped
 
-    # 检查 Allure 结果是否存在
     allure_exists = ALLURE_RESULTS_DIR.exists() and list(ALLURE_RESULTS_DIR.glob("*.json"))
 
     return JSONResponse(content={
@@ -144,10 +182,10 @@ async def get_report_json(task_id: str):
             "stdout": stdout[-2000:] if len(stdout) > 2000 else stdout,
             "stderr": result.get("stderr", "")[-500:] if result.get("stderr") else ""
         },
-        "html_available": False,
+        "html_available": True,
+        "html_url": f"/api/report/{task_id}",
         "allure_results_exists": allure_exists,
-        "allure_results_path": str(ALLURE_RESULTS_DIR) if allure_exists else None,
-        "message": "📊 JSON 格式报告（HTML 报告不可用）"
+        "message": "📊 测试报告数据"
     })
 
 
@@ -248,6 +286,7 @@ async def generate_report(task_id: str):
                 "task_id": task_id,
                 "status": "success",
                 "report_path": str(task_report_dir / "index.html"),
+                "report_url": f"/api/report/{task_id}",
                 "message": "✅ Allure 报告生成成功"
             }
         else:
